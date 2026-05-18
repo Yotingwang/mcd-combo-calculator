@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>收藏清單</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #FFBA06;
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+        .top-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            padding: 15px 25px;
+            font-size: 16px;
+            background-color: white;
+            color: #FFBA06;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            flex: 1;
+            margin-right: 60px;
+        }
+        .main-box {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .main-box h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #FFBA06;
+        }
+        .item-row {
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .item-row.single {
+            background: #FFF3E0;
+            border-left: 4px solid #FF9800;
+        }
+        .item-row.combo {
+            background: #E8F5E9;
+            border-left: 4px solid #4CAF50;
+        }
+        .item-name {
+            color: #333;
+            font-size: 15px;
+        }
+        .item-price {
+            color: #ff6b35;
+            font-weight: bold;
+            font-size: 15px;
+        }
+        .total-section {
+            border-top: 2px dashed #ddd;
+            padding-top: 15px;
+            margin-top: 10px;
+        }
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .total-row.final {
+            font-size: 22px;
+            color: #ff6b35;
+        }
+        .empty-favorites {
+            text-align: center;
+            color: white;
+            font-size: 18px;
+            padding: 50px;
+        }
+        .option-name {
+            background: #E91E63;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <button class="back-btn" onclick="location.href='index.html'">← 返回首頁</button>
+        <h1>收藏清單</h1>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        let itemsData = [];
+        let combosData = [];
+
+        function parseComboItems(detail) {
+            if (!detail) return [];
+            if (detail.startsWith('[')) {
+                return JSON.parse(detail);
+            }
+            return detail.split('/');
+        }
+
+        async function init() {
+            await Promise.all([loadItemsData(), loadCombosData()]);
+            renderFavorites();
+        }
+
+        async function loadItemsData() {
+            try {
+                const response = await fetch('/api/items');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    itemsData = result.data;
+                }
+            } catch (error) {
+                console.error('載入資料失敗:', error);
+            }
+        }
+
+        async function loadCombosData() {
+            try {
+                const response = await fetch('/api/combos');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    combosData = result.data;
+                }
+            } catch (error) {
+                console.error('載入套餐失敗:', error);
+            }
+        }
+
+        function getItemInfo(itemName) {
+            return itemsData.find(item => item.item_name === itemName);
+        }
+
+        function calculateOrderByOption(cart, optionName) {
+            const cartEntries = Object.entries(cart);
+            
+            let originalTotal = 0;
+            cartEntries.forEach(([name, qty]) => {
+                const item = getItemInfo(name);
+                if (item) originalTotal += item.price * qty;
+            });
+
+            let usedCombos = [];
+            let matchedItems = new Set();
+
+            if (optionName.startsWith('套餐 ')) {
+                const comboName = optionName.replace('套餐 ', '');
+                const combo = combosData.find(c => c.combo_name === comboName);
+                if (combo) {
+                    const comboItems = parseComboItems(combo.combination_detail);
+                    if (comboItems.length > 0) {
+                        usedCombos = [{ combo: combo, items: comboItems }];
+                        matchedItems = new Set(comboItems);
+                    }
+                }
+            }
+
+            let totalPrice = originalTotal;
+            usedCombos.forEach(uc => {
+                const comboItems = uc.items;
+                const individualTotal = comboItems.reduce((sum, name) => {
+                    const item = getItemInfo(name);
+                    return sum + (item ? item.price : 0);
+                }, 0);
+                const savings = individualTotal - uc.combo.combo_price;
+                totalPrice -= savings;
+            });
+
+            return {
+                cartEntries: cartEntries,
+                usedCombos: usedCombos,
+                matchedItems: matchedItems,
+                totalPrice: totalPrice,
+                savings: originalTotal - totalPrice
+            };
+        }
+
+        function renderFavorites() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="empty-favorites">尚無收藏清單</div>';
+        }
+
+        init();
+    </script>
+</body>
+</html>

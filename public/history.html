@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>歷史紀錄</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #FFBA06;
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+        .top-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            padding: 15px 25px;
+            font-size: 16px;
+            background-color: white;
+            color: #FFBA06;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            flex: 1;
+            margin-right: 60px;
+        }
+        .main-box {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .main-box h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #FFBA06;
+        }
+        .item-row {
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .item-row.single {
+            background: #FFF3E0;
+            border-left: 4px solid #FF9800;
+        }
+        .item-row.combo {
+            background: #E8F5E9;
+            border-left: 4px solid #4CAF50;
+        }
+        .item-name {
+            color: #333;
+            font-size: 15px;
+        }
+        .item-price {
+            color: #ff6b35;
+            font-weight: bold;
+            font-size: 15px;
+        }
+        .total-section {
+            border-top: 2px dashed #ddd;
+            padding-top: 15px;
+            margin-top: 10px;
+        }
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .total-row.final {
+            font-size: 22px;
+            color: #ff6b35;
+        }
+        .order-date {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .empty-history {
+            text-align: center;
+            color: white;
+            font-size: 18px;
+            padding: 50px;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <button class="back-btn" onclick="location.href='index.html'">← 返回首頁</button>
+        <h1>歷史紀錄</h1>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        let itemsData = [];
+        let combosData = [];
+
+        function parseComboItems(detail) {
+            if (!detail) return [];
+            if (detail.startsWith('[')) {
+                return JSON.parse(detail);
+            }
+            return detail.split('/');
+        }
+
+        async function init() {
+            await Promise.all([loadItemsData(), loadCombosData()]);
+            renderHistory();
+        }
+
+        async function loadItemsData() {
+            try {
+                const response = await fetch('/api/items');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    itemsData = result.data;
+                }
+            } catch (error) {
+                console.error('載入資料失敗:', error);
+            }
+        }
+
+        async function loadCombosData() {
+            try {
+                const response = await fetch('/api/combos');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    combosData = result.data;
+                }
+            } catch (error) {
+                console.error('載入套餐失敗:', error);
+            }
+        }
+
+        function getItemInfo(itemName) {
+            return itemsData.find(item => item.item_name === itemName);
+        }
+
+        function calculateOrder(cart) {
+            const cartEntries = Object.entries(cart);
+            
+            let originalTotal = 0;
+            let cartItems = [];
+
+            cartEntries.forEach(([name, qty]) => {
+                const item = getItemInfo(name);
+                if (item) {
+                    originalTotal += item.price * qty;
+                    cartItems.push({
+                        name: name,
+                        price: item.price,
+                        qty: qty,
+                        subtotal: item.price * qty,
+                        type: 'single'
+                    });
+                }
+            });
+
+            let bestTotal = originalTotal;
+            let bestSavings = 0;
+            let usedCombos = [];
+            let matchedItems = new Set();
+
+            combosData.forEach(combo => {
+                const comboItems = parseComboItems(combo.combination_detail);
+                const canUseCombo = comboItems.length > 0 && comboItems.every(item => cartEntries.some(([name]) => name === item));
+                
+                if (canUseCombo) {
+                    const comboTotal = combo.combo_price;
+                    const individualTotal = comboItems.reduce((sum, name) => {
+                        const item = getItemInfo(name);
+                        return sum + (item ? item.price : 0);
+                    }, 0);
+
+                    const savings = individualTotal - comboTotal;
+                    
+                    if (savings > bestSavings) {
+                        bestSavings = savings;
+                        bestTotal = originalTotal - savings;
+                        usedCombos = [{ combo: combo, items: comboItems }];
+                        matchedItems = new Set(comboItems);
+                    }
+                }
+            });
+
+            return {
+                cartItems: cartItems,
+                usedCombos: usedCombos,
+                matchedItems: matchedItems,
+                totalPrice: bestTotal,
+                savings: bestSavings
+            };
+        }
+
+        function renderHistory() {
+            const resultDiv = document.getElementById('result');
+            
+            const exampleOrder = {
+                date: '2024/3/17 14:30:00',
+                cart: { '大麥克': 2, '可口可樂（中）': 1, '薯條（大）': 2 }
+            };
+            
+            const calculated = calculateOrder(exampleOrder.cart);
+                
+            let html = `<div class="main-box">
+                <div class="order-date">${exampleOrder.date}</div>
+                <h2>📋 方案明細</h2>`;
+
+            calculated.cartItems.forEach(item => {
+                const isInCombo = calculated.matchedItems.has(item.name);
+                if (!isInCombo) {
+                    html += `<div class="item-row single">
+                        <span class="item-name">單點 ${item.name} x${item.qty}</span>
+                        <span class="item-price">$${item.subtotal}元</span>
+                    </div>`;
+                }
+            });
+
+            calculated.usedCombos.forEach(uc => {
+                html += `<div class="item-row combo">
+                    <span class="item-name">套餐 ${uc.combo.combo_name}</span>
+                    <span class="item-price">$${uc.combo.combo_price}元</span>
+                </div>`;
+            });
+
+            html += `
+                <div class="total-section">
+                    <div class="total-row final">
+                        <span>共</span>
+                        <span>$${calculated.totalPrice}元</span>
+                    </div>
+                    <div class="total-row" style="color:#4CAF50">
+                        <span>節省了</span>
+                        <span>$${calculated.savings}元</span>
+                    </div>
+                </div>
+            </div>`;
+            
+            resultDiv.innerHTML = html;
+        }
+
+        init();
+    </script>
+</body>
+</html>

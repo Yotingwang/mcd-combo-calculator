@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>計算結果</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #FFBA06;
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+
+        .top-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .back-btn {
+            padding: 15px 25px;
+            font-size: 16px;
+            background-color: white;
+            color: #FFBA06;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+            color: white;
+            text-align: center;
+        }
+
+        .main-box {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            position: relative;
+            border: 2px solid #FFBA06;
+            transition: all 0.3s ease;
+        }
+
+        .main-box.active-plan {
+            border: 4px solid #2196F3;
+            background: white;
+            transform: scale(1.03);
+            z-index: 10;
+        }
+
+        .main-box h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #FFBA06;
+        }
+
+        .item-row {
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .item-row.single {
+            background: #FFF3E0;
+            border-left: 4px solid #FF9800;
+        }
+
+        .item-row.combo {
+            background: #E8F5E9;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .item-row.modified {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+        }
+
+        .item-row.new {
+            background: #FCE4EC;
+            border-left: 4px solid #E91E63;
+        }
+
+        .item-name {
+            color: #333;
+            font-size: 15px;
+        }
+
+        .item-row.modified .item-name {
+            color: #1976D2;
+        }
+
+        .item-row.new .item-name {
+            color: #C2185B;
+        }
+
+        .item-price {
+            color: #ff6b35;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        .total-section {
+            display: none;
+        }
+
+        .recommend-box {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .recommend-box h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #2196F3;
+        }
+
+        .recommend-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            padding-top: 35px;
+            background: #F5F5F5;
+            border-radius: 10px;
+            position: relative;
+        }
+
+        .recommend-item h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .fav-btn-small {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 5px 12px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .fav-btn-small:hover {
+            background: #C2185B;
+        }
+
+        .plan-items {
+            display: none;
+        }
+
+        .plan-items.expanded {
+            display: block;
+        }
+
+        .toggle-btn {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            background: #f5f5f5;
+            color: #666;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            text-align: center;
+            transition: background 0.3s;
+        }
+
+        .toggle-btn:hover {
+            background: #e8e8e8;
+        }
+
+        .toggle-btn::after {
+            content: ' ▼';
+            font-size: 12px;
+        }
+
+        .toggle-btn.expanded::after {
+            content: ' ▲';
+        }
+
+        .fav-section {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .fav-section h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #E91E63;
+        }
+
+        .fav-section select {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+        }
+
+        .fav-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .fav-btn:hover {
+            background: #C2185B;
+        }
+
+        .confirm-btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            margin-top: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .confirm-btn:hover {
+            background: #45a049;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: flex-end;
+            padding: 0;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 24px 24px 0 0;
+            padding: 25px 20px;
+            padding-bottom: 40px;
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+            z-index: 10;
+        }
+
+        .modal-fav-btn {
+            position: absolute;
+            top: 20px;
+            right: 55px;
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 5px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .modal-fav-btn:hover {
+            background: #C2185B;
+        }
+
+        .modal-title {
+            font-size: 22px;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4CAF50;
+        }
+
+        .modal-detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #444;
+            padding: 5px 0;
+            border-bottom: 1px dashed #eee;
+        }
+
+        .modal-detail-row.bold {
+            font-weight: bold;
+            color: #000;
+        }
+
+        .modal-copy-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-top: 20px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .modal-copy-btn:hover {
+            background: #1976D2;
+        }
+
+        .modal-submit-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin-top: 10px;
+            background: #FFBA06;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="top-bar">
+        <button class="back-btn" onclick="location.href='menu.html'">← 返回選擇</button>
+        <h1>最佳方案</h1>
+    </div>
+
+
+    <div class="filter-bar"
+        style="margin-bottom: 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <label for="sortSelect" style="color: white; font-weight: bold;">排序方式：</label>
+            <select id="sortSelect" onchange="renderPlans()"
+                style="padding: 8px; border-radius: 8px; border: none; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-weight:bold; color: #333;">
+                <option value="savings">最多節省</option>
+                <option value="price">最低總價</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="result"></div>
+    <div id="recommendations"></div>
+
+    <!-- Modal HTML completely removed as per accordion strategy -->
+
+    <script>
+        let itemsData = [];
+        let combosData = [];
+        let cart = {};
+        let mustHave = {};
+        let planOptions = [];
+
+        function togglePlanItems(index) {
+            const allItems = document.querySelectorAll('.plan-items');
+            const allBtns = document.querySelectorAll('.toggle-btn');
+            const allBoxes = document.querySelectorAll('.main-box');
+
+            const content = document.getElementById('plan-items-' + index);
+            const btn = document.getElementById('toggle-btn-' + index);
+            const box = document.getElementById('main-box-' + index);
+
+            const isExpanding = !content.classList.contains('expanded');
+
+            // 先收合所有方案
+            allItems.forEach(el => el.classList.remove('expanded'));
+            allBtns.forEach(el => {
+                el.classList.remove('expanded');
+                el.textContent = '▼ 展開完整方案';
+            });
+            allBoxes.forEach(el => el.classList.remove('active-plan'));
+
+            // 若原本為未展開狀態，則展開指定的方案
+            if (isExpanding) {
+                content.classList.add('expanded');
+                btn.classList.add('expanded');
+                btn.textContent = '▲ 收合方案明細';
+                if (box) box.classList.add('active-plan');
+            }
+        }
+
+        function parseComboItems(detail) {
+            if (!detail) return [];
+            if (detail.startsWith('[')) {
+                return JSON.parse(detail);
+            }
+            return detail.split('/');
+        }
+
+        async function init() {
+            const savedCart = sessionStorage.getItem('checkoutCart');
+            if (savedCart) {
+                cart = JSON.parse(savedCart);
+            }
+            const savedMustHave = sessionStorage.getItem('mustHave');
+            if (savedMustHave) {
+                mustHave = JSON.parse(savedMustHave);
+            }
+
+            if (Object.keys(cart).length === 0) {
+                document.getElementById('result').innerHTML = '<p style="color:white;text-align:center">尚未選擇任何餐點</p>';
+                return;
+            }
+
+            await Promise.all([loadItemsData(), loadCombosData()]);
+            calculateOptimal();
+        }
+
+        async function loadItemsData() {
+            try {
+                const response = await fetch('/api/items');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    itemsData = result.data;
+                }
+            } catch (error) {
+                console.error('載入資料失敗:', error);
+            }
+        }
+
+        async function loadCombosData() {
+            try {
+                const response = await fetch('/api/combos');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    combosData = result.data;
+                }
+            } catch (error) {
+                console.error('載入套餐失敗:', error);
+            }
+        }
+
+        function getItemInfo(itemName) {
+            return itemsData.find(item => item.item_name === itemName);
+        }
+
+
+
+        let allRawPlans = [];
+        let _requestId = 0;
+
+        async function calculateOptimal() {
+            const reqId = ++_requestId;
+            try {
+                // 顯示載入中
+                document.getElementById('result').innerHTML = '<p style="color:white;text-align:center">正在尋找最佳方案...</p>';
+                document.getElementById('recommendations').innerHTML = '';
+
+                const [resSweet, resNoSweet] = await Promise.all([
+                    fetch('/api/optimize', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cart: cart, mustHave: mustHave, sweetheart: true })
+                    }),
+                    fetch('/api/optimize', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cart: cart, mustHave: mustHave, sweetheart: false })
+                    })
+                ]);
+
+                const dataSweet = await resSweet.json();
+                const dataNoSweet = await resNoSweet.json();
+
+                if (reqId !== _requestId) return;
+
+                if (dataSweet.status === 'error' && dataNoSweet.status === 'error') {
+                    document.getElementById('result').innerHTML = `<p style="color:white;text-align:center">${dataSweet.message}</p>`;
+                    return;
+                }
+
+                allRawPlans = [];
+
+                function extractPlans(data, isSweet) {
+                    if (!data || data.status === 'error') return;
+                    if (data['func2']) allRawPlans.push({ key: 'func2' + (isSweet ? '_s' : '_n'), title: '最佳推薦', data: data['func2'], isSweet });
+                    if (data['func1']) allRawPlans.push({ key: 'func1' + (isSweet ? '_s' : '_n'), title: '精簡方案', data: data['func1'], isSweet });
+                    if (Array.isArray(data['func4'])) {
+                        data['func4'].forEach((plan, i) => {
+                            allRawPlans.push({ key: 'func4_' + i + (isSweet ? '_s' : '_n'), title: '升級推薦', data: plan, isSweet });
+                        });
+                    }
+                }
+
+                extractPlans(dataSweet, true);
+                extractPlans(dataNoSweet, false);
+
+                renderPlans();
+
+            } catch (error) {
+                if (reqId !== _requestId) return;
+                console.error(error);
+                document.getElementById('result').innerHTML = '<p style="color:white;text-align:center">計算失敗，請稍後再試</p>';
+            }
+        }
+
+        function renderPlans() {
+            if (!allRawPlans || allRawPlans.length === 0) return;
+
+            const sortMode = document.getElementById('sortSelect').value;
+
+            let validPlans = allRawPlans.filter(p => p.data && p.data.status === 'success' && p.data.combos && p.data.combos.length > 0);
+
+            // 去除重複方案（總價與組合完全相同的視為重複）
+            const uniquePlansMap = new Map();
+            validPlans.forEach(p => {
+                const key = p.data.total + '|' + p.data.combos.map(c => c.option_name + c.items.join('')).join(',');
+                if (!uniquePlansMap.has(key)) {
+                    uniquePlansMap.set(key, p);
+                } else {
+                    const existing = uniquePlansMap.get(key);
+                    // 如果現有的是需要甜心卡，但新的是無甜心卡就能達成的相同方案，則用無甜心卡的覆蓋它
+                    if (existing.isSweet && !p.isSweet) {
+                        uniquePlansMap.set(key, p);
+                    }
+                }
+            });
+            validPlans = Array.from(uniquePlansMap.values());
+
+            // 排序邏輯
+            validPlans.sort((a, b) => {
+                if (sortMode === 'savings') {
+                    return b.data.savings - a.data.savings;
+                } else {
+                    return a.data.total - b.data.total;
+                }
+            });
+
+            planOptions = [];
+            let html = '';
+
+            validPlans.forEach((p, index) => {
+                const isBest = (index === 0);
+                const planData = p.data;
+                const planIndex = planOptions.length;
+
+                const planForModal = {
+                    title: p.title,
+                    isSweet: p.isSweet,
+                    combos: planData.combos,
+                    single_items: planData.single_items,
+                    extra_items: planData.extra_items,
+                    total: planData.total,
+                    savings: planData.savings,
+                    originalTotal: planData.original_total,
+                    replaced: planData.replaced || []
+                };
+                planOptions.push(planForModal);
+
+                let blockHtml = '';
+                blockHtml += `<div class="main-box" id="main-box-${planIndex}">`;
+
+                const sweetBadge = p.isSweet
+                    ? '<span style="background:#E91E63;color:white;font-size:13px;padding:4px 8px;border-radius:8px;vertical-align:middle;">💳 需有甜心卡</span>'
+                    : '<span style="background:#9E9E9E;color:white;font-size:13px;padding:4px 8px;border-radius:8px;vertical-align:middle;">免甜心卡</span>';
+
+                blockHtml += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee;">
+                    <div style="display: flex; align-items: baseline; gap: 8px;">
+                        <span style="font-size: 22px; font-weight: bold; color: #ff6b35;">$${planData.total}</span>
+                        <span style="font-size: 15px; color: #4CAF50;">(省 $${planData.savings})</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button class="fav-btn-small" style="position: static; padding: 4px 8px;" onclick="saveFavorite(${planIndex})">❤️ 收藏</button>
+                        ${sweetBadge}
+                    </div>
+                </div>`;
+
+                if (planData.upsell) {
+                    blockHtml += `<div style="background-color: #FFF3E0; border-left: 4px solid #FF9800; padding: 10px 12px; margin-bottom: 10px; border-radius: 6px; font-size: 15px; color: #E65100;">`;
+                    blockHtml += `<strong>✨ 超值升級：</strong>加 $${planData.upsell.extra_cost} 元送 ${planData.upsell.item_name}（原價 $${planData.upsell.original_price} 元）</div>`;
+                }
+
+                if (planData.replaced && planData.replaced.length > 0) {
+                    blockHtml += `<div style="background-color: #E3F2FD; border-left: 4px solid #2196F3; padding: 10px 12px; margin-bottom: 10px; border-radius: 6px; font-size: 15px; color: #1976D2;">`;
+                    blockHtml += `<strong>💡 調整：</strong>`;
+                    planData.replaced.forEach((r, i) => {
+                        blockHtml += `${i > 0 ? '；' : ''}${r.from} → ${r.to} x${r.qty}`;
+                    });
+                    blockHtml += `</div>`;
+                }
+
+                // Inline Accordion button
+                blockHtml += `<button class="toggle-btn" id="toggle-btn-${planIndex}" onclick="togglePlanItems(${planIndex})">▼ 展開完整方案</button>`;
+
+                // Inline plan items wrapper
+                blockHtml += `<div class="plan-items" id="plan-items-${planIndex}">`;
+
+                // Combos
+                planData.combos.forEach(c => {
+                    const rowClass = c.option_name === '單點' ? 'single' : 'combo';
+                    let displayName = '';
+                    if (c.option_name === '單點') {
+                        displayName = `單點 ${c.items[0]} x${c.qty}`;
+                    } else {
+                        displayName = `【${c.option_name}】(${c.items.join(' + ')}) x${c.qty}`;
+                    }
+
+                    blockHtml += `<div class="item-row ${rowClass}">
+                        <span class="item-name">${displayName}</span>
+                        <span class="item-price">$${c.price * c.qty}元</span>
+                    </div>`;
+                });
+
+                // Single Items
+                planData.single_items.forEach(item => {
+                    const itemInfo = getItemInfo(item.name);
+                    const price = itemInfo ? itemInfo.price * item.qty : 0;
+                    blockHtml += `<div class="item-row single">
+                        <span class="item-name">單點 ${item.name} x${item.qty}</span>
+                        <span class="item-price">$${price}元</span>
+                    </div>`;
+                });
+
+                // Extra Items
+                planData.extra_items.forEach(item => {
+                    blockHtml += `<div class="item-row new">
+                        <span class="item-name">(多送) ${item.name} x${item.qty}</span>
+                        <span class="item-price">含在套餐</span>
+                    </div>`;
+                });
+
+                // Original Total Reference (Optional but good to have inside accordion)
+                blockHtml += `<div style="text-align: right; color: #666; font-size: 13px; margin-top: 10px;">原價單點總計: $${planData.original_total}</div>`;
+
+                // Copy Button acting as Commit
+                blockHtml += `<button class="confirm-btn" onclick="copyOrderText(${planIndex})">📋 複製點餐指令</button>`;
+
+                blockHtml += `</div></div>`;
+
+                html += blockHtml;
+            });
+
+            document.getElementById('result').innerHTML = html;
+            document.getElementById('recommendations').innerHTML = '';
+        }
+
+
+
+        function saveFavorite(index) {
+            const plan = planOptions[index];
+            if (plan) {
+                alert('收藏功能敬請期待！\n方案: ' + plan.title);
+            }
+        }
+
+        // Modal functions removed
+
+        function copyOrderText(index) {
+            const plan = planOptions[index];
+            if (!plan) return;
+
+            // TODO: Here you would trigger silent API call to save history
+            // e.g., fetch('/api/history', { method: 'POST', body: JSON.stringify(plan) })
+            console.log('User decided on plan, silent tracking triggered.', plan.title);
+
+            let lines = [];
+            lines.push(`【點餐指令】`);
+
+            plan.combos.forEach(c => {
+                if (c.option_name === '單點') {
+                    lines.push(`單點：${c.qty} 份 ${c.items[0]}`);
+                } else {
+                    lines.push(`${c.qty} 份 ${c.option_name} (${c.items.join(' + ')})`);
+                }
+            });
+
+            plan.single_items.forEach(item => {
+                lines.push(`單點：${item.qty} 份 ${item.name}`);
+            });
+
+            if (plan.replaced && plan.replaced.length > 0) {
+                lines.push(`(備註：此方案包含以下替代)`);
+                plan.replaced.forEach(r => {
+                    lines.push(`- ${r.from} 換成 ${r.to}`);
+                });
+            }
+
+            const textToCopy = lines.join('\n');
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    alert('已複製點餐指令！\n\n' + textToCopy);
+                }).catch(err => {
+                    console.error('複製失敗:', err);
+                    alert('複製失敗，請手動複製。\n\n' + textToCopy);
+                });
+            } else {
+                alert(textToCopy);
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

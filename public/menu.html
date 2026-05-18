@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>餐點選擇</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #FFBA06;
+            padding: 20px;
+            padding-bottom: 80px;
+        }
+        .top-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .top-bar h1 {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+        }
+        .back-btn {
+            padding: 15px 25px;
+            font-size: 16px;
+            background-color: white;
+            color: #FFBA06;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .back-btn:hover {
+            background-color: #fff;
+            transform: scale(1.05);
+        }
+        .buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 12px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-color: #ff6b35;
+            color: white;
+            flex: 1;
+            max-width: 150px;
+        }
+        .btn:hover {
+            transform: scale(1.05);
+        }
+        .btn.active {
+            background-color: #c44d1c;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .gallery-item {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        .gallery-item:hover {
+            transform: translateY(-5px);
+        }
+        .gallery-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: contain;
+            background: #fff;
+        }
+        .gallery-item p {
+            padding: 15px;
+            text-align: center;
+            font-size: 16px;
+            color: #333;
+        }
+        .gallery-item .price {
+            padding-top: 0;
+            padding-bottom: 15px;
+            color: #ff6b35;
+            font-weight: bold;
+        }
+        .hidden {
+            display: none;
+        }
+        .cart-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 18px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #ff6b35, #ff8c5a);
+            color: #fff;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+        }
+        .cart-btn:hover {
+            background: linear-gradient(135deg, #e55a2b, #ff6b35);
+            transform: scale(1.1);
+        }
+        .checkout-btn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 18px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #4CAF50, #66BB6A);
+            color: #fff;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+        .checkout-btn:hover {
+            background: linear-gradient(135deg, #388E3C, #4CAF50);
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <button class="back-btn" onclick="location.href='index.html'">← 返回首頁</button>
+        <h1>餐點選擇</h1>
+    </div>
+
+    <div class="buttons">
+        <button class="btn active" data-category="FOOD">FOOD</button>
+        <button class="btn" data-category="DESSERT">DESSERT</button>
+        <button class="btn" data-category="BEVERAGE">BEVERAGE</button>
+    </div>
+
+    <div id="FOOD" class="gallery"></div>
+    <div id="DESSERT" class="gallery hidden"></div>
+    <div id="BEVERAGE" class="gallery hidden"></div>
+
+    <button class="cart-btn" onclick="location.href='cart.html'">📋 已選餐點 <span id="cartCount">0</span></button>
+    <button class="checkout-btn" onclick="checkout()">💡 查看方案</button>
+
+    <script>
+        let itemsData = { FOOD: [], DESSERT: [], BEVERAGE: [] };
+        
+        let cart = JSON.parse(sessionStorage.getItem('cart')) || {};
+
+        const categoryMap = {
+            'FOOD': 'FOOD',
+            'DESSERT': 'DESSERT',
+            'BEVERAGE': 'BEVERAGE'
+        };
+
+        async function loadItems() {
+            try {
+                const response = await fetch('/api/items');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    result.data.forEach(item => {
+                        const category = categoryMap[item.item_type];
+                        if (category) {
+                            itemsData[category] = itemsData[category] || [];
+                            itemsData[category].push(item);
+                        }
+                    });
+                    renderGalleries();
+                    updateCartCount();
+                }
+            } catch (error) {
+                console.error('載入資料失敗:', error);
+            }
+        }
+
+        function getImageSrc(itemName, category) {
+            return `assets/${category}/${itemName}.avif`;
+        }
+
+        function renderGalleries() {
+            ['FOOD', 'DESSERT', 'BEVERAGE'].forEach(cat => {
+                const container = document.getElementById(cat);
+                const items = itemsData[cat];
+                
+                if (!items || items.length === 0) {
+                    container.innerHTML = '<p>尚無資料</p>';
+                    return;
+                }
+
+                let html = '';
+                items.forEach(item => {
+                    const imgSrc = getImageSrc(item.item_name, cat);
+                    const qty = cart[item.item_name] || 0;
+                    
+                    html += `<div class="gallery-item">
+                        <img src="${imgSrc}" alt="${item.item_name}">
+                        <p>${item.item_name}</p>
+                        <p class="price">$${item.price}</p>
+                        <div class="quantity-selector" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:15px">
+                            <button onclick="changeQty('${item.item_name}', -1)" style="width:30px;height:30px;border:none;border-radius:50%;background:#ff6b35;color:white;cursor:pointer">-</button>
+                            <input type="number" id="qty-${item.item_name}" value="${qty}" min="0" readonly style="width:40px;text-align:center;border:1px solid #ddd;border-radius:5px;padding:5px">
+                            <button onclick="changeQty('${item.item_name}', 1)" style="width:30px;height:30px;border:none;border-radius:50%;background:#ff6b35;color:white;cursor:pointer">+</button>
+                        </div>
+                    </div>`;
+                });
+                container.innerHTML = html;
+            });
+        }
+
+        function changeQty(name, delta) {
+            const input = document.getElementById('qty-' + name);
+            let qty = parseInt(input.value) + delta;
+            if (qty < 0) qty = 0;
+            input.value = qty;
+            
+            if (qty > 0) {
+                cart[name] = qty;
+            } else {
+                delete cart[name];
+            }
+            sessionStorage.setItem('cart', JSON.stringify(cart));
+            updateCartCount();
+        }
+
+        function updateCartCount() {
+            const total = Object.values(cart).reduce((sum, q) => sum + q, 0);
+            document.getElementById('cartCount').textContent = total;
+        }
+
+        async function checkout() {
+            const cartItems = Object.entries(cart);
+            if (cartItems.length === 0) {
+                alert('尚未選擇任何餐點');
+                return;
+            }
+            
+            const cartData = JSON.stringify(cart);
+            sessionStorage.setItem('checkoutCart', cartData);
+            location.href = 'checkout.html';
+        }
+
+        function showCart() {
+            const items = Object.entries(cart).map(([name, qty]) => `${name} x ${qty}`).join('\n');
+            if (!items) {
+                alert('尚未選擇任何餐點');
+            } else {
+                alert('購物車內容：\n' + items + '\n\n共 ' + Object.values(cart).reduce((a, b) => a + b, 0) + ' 件');
+            }
+        }
+
+        const buttons = document.querySelectorAll('.btn');
+        const galleries = document.querySelectorAll('.gallery');
+
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                buttons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                const category = btn.dataset.category;
+                galleries.forEach(g => g.classList.add('hidden'));
+                document.getElementById(category).classList.remove('hidden');
+            });
+        });
+
+        loadItems();
+    </script>
+</body>
+</html>
