@@ -39,7 +39,7 @@ The user application will be accessible at `http://localhost:3000`.
 The project includes a Streamlit-based admin interface to manage the menu, combos, and items.
 To run the admin panel, first ensure you have the required Python packages (e.g., `streamlit`, `pandas`, `sqlalchemy`), then run:
 ```bash
-cd McDproject
+cd admin
 streamlit run admin.py
 ```
 
