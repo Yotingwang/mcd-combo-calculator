@@ -16,11 +16,16 @@
             padding: 20px;
             padding-bottom: 100px;
         }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
         .top-bar {
             display: flex;
             align-items: center;
-            gap: 10px;
             margin-bottom: 20px;
+            position: relative;
+            min-height: 50px;
         }
         .back-btn {
             padding: 15px 25px;
@@ -32,12 +37,17 @@
             cursor: pointer;
             font-weight: bold;
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            z-index: 10;
         }
         h1 {
             color: white;
             text-align: center;
-            flex: 1;
-            margin-right: 60px;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            margin: 0;
+            font-size: 24px;
+            white-space: nowrap;
         }
         .main-box {
             background: white;
@@ -45,225 +55,293 @@
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 2px solid #FFBA06;
         }
-        .main-box h2 {
-            color: #333;
-            font-size: 18px;
-            margin-bottom: 15px;
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
             padding-bottom: 10px;
             border-bottom: 2px solid #FFBA06;
         }
+        .card-header .meta {
+            font-size: 13px;
+            color: #999;
+        }
+        .delete-btn {
+            padding: 5px 12px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        .delete-btn:hover { background: #cc0000; }
+        .price-row {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .price-total {
+            font-size: 26px;
+            font-weight: bold;
+            color: #ff6b35;
+        }
+        .price-savings {
+            font-size: 15px;
+            color: #4CAF50;
+        }
+        .sweet-badge {
+            display: inline-block;
+            background: #E91E63;
+            color: white;
+            font-size: 13px;
+            padding: 3px 8px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .no-sweet-badge {
+            display: inline-block;
+            background: #9E9E9E;
+            color: white;
+            font-size: 13px;
+            padding: 3px 8px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
         .item-row {
             border-radius: 8px;
-            padding: 12px 15px;
+            padding: 10px 14px;
             margin-bottom: 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-        .item-row.single {
-            background: #FFF3E0;
-            border-left: 4px solid #FF9800;
+            font-size: 15px;
         }
         .item-row.combo {
             background: #E8F5E9;
             border-left: 4px solid #4CAF50;
         }
-        .item-name {
-            color: #333;
-            font-size: 15px;
+        .item-row.single {
+            background: #FFF3E0;
+            border-left: 4px solid #FF9800;
         }
-        .item-price {
-            color: #ff6b35;
-            font-weight: bold;
-            font-size: 15px;
+        .item-row.extra {
+            background: #EDE7F6;
+            border-left: 4px solid #7E57C2;
         }
-        .total-section {
-            border-top: 2px dashed #ddd;
-            padding-top: 15px;
-            margin-top: 10px;
-        }
-        .total-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 18px;
-            font-weight: bold;
+        .item-name { color: #333; }
+        .item-price { color: #ff6b35; font-weight: bold; }
+        .replaced-block {
+            background: #FFF8E1;
+            border-left: 4px solid #FFC107;
+            border-radius: 8px;
+            padding: 10px 14px;
             margin-bottom: 8px;
-        }
-        .total-row.final {
-            font-size: 22px;
-            color: #ff6b35;
-        }
-        .order-date {
-            color: #666;
             font-size: 14px;
-            margin-bottom: 10px;
+            color: #795548;
         }
-        .empty-history {
+        .section-label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #666;
+            margin: 10px 0 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .empty-state {
             text-align: center;
             color: white;
             font-size: 18px;
-            padding: 50px;
+            padding: 60px 20px;
+        }
+        .empty-state p {
+            margin-top: 10px;
+            font-size: 15px;
+            opacity: 0.85;
+        }
+        .login-prompt {
+            text-align: center;
+            background: white;
+            border-radius: 16px;
+            padding: 40px 20px;
+            margin-top: 20px;
+        }
+        .login-prompt h2 { color: #FFBA06; margin-bottom: 10px; }
+        .login-prompt p { color: #666; margin-bottom: 20px; }
+        .login-prompt button {
+            padding: 12px 30px;
+            background: #FFBA06;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
-    <div class="top-bar">
-        <button class="back-btn" onclick="location.href='index.html'">← 返回首頁</button>
-        <h1>歷史紀錄</h1>
-    </div>
+    <div class="container">
+        <div class="top-bar">
+            <button class="back-btn" onclick="location.href='index.html'">← 返回首頁</button>
+            <h1>歷史紀錄</h1>
+        </div>
 
-    <div id="result"></div>
+        <div id="result"></div>
 
     <script>
-        let itemsData = [];
-        let combosData = [];
-
-        function parseComboItems(detail) {
-            if (!detail) return [];
-            if (detail.startsWith('[')) {
-                return JSON.parse(detail);
-            }
-            return detail.split('/');
-        }
-
         async function init() {
-            await Promise.all([loadItemsData(), loadCombosData()]);
-            renderHistory();
-        }
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="empty-state">載入中...</div>';
 
-        async function loadItemsData() {
             try {
-                const response = await fetch('/api/items');
-                const result = await response.json();
-                if (result.status === 'success') {
-                    itemsData = result.data;
+                const response = await fetch('/api/history');
+
+                if (response.status === 401) {
+                    resultDiv.innerHTML = `
+                        <div class="login-prompt">
+                            <h2>尚未登入</h2>
+                            <p>請先登入會員，才能查看您的點餐歷史紀錄。</p>
+                            <button onclick="location.href='index.html'">前往登入</button>
+                        </div>`;
+                    return;
                 }
+
+                const result = await response.json();
+                if (result.status !== 'success' || result.data.length === 0) {
+                    resultDiv.innerHTML = `
+                        <div class="empty-state">
+                            <div style="font-size:48px;">📋</div>
+                            <div>尚無點餐紀錄</div>
+                            <p>在計算結果頁點擊「複製點餐指令」即會自動記錄！</p>
+                        </div>`;
+                    return;
+                }
+
+                renderHistory(result.data);
             } catch (error) {
-                console.error('載入資料失敗:', error);
+                document.getElementById('result').innerHTML = '<div class="empty-state">載入失敗，請稍後再試。</div>';
+                console.error(error);
             }
         }
 
-        async function loadCombosData() {
-            try {
-                const response = await fetch('/api/combos');
-                const result = await response.json();
-                if (result.status === 'success') {
-                    combosData = result.data;
-                }
-            } catch (error) {
-                console.error('載入套餐失敗:', error);
-            }
+        function formatDate(dateStr) {
+            const d = new Date(dateStr);
+            return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         }
 
-        function getItemInfo(itemName) {
-            return itemsData.find(item => item.item_name === itemName);
-        }
+        function renderHistory(records) {
+            const resultDiv = document.getElementById('result');
+            let html = '';
 
-        function calculateOrder(cart) {
-            const cartEntries = Object.entries(cart);
-            
-            let originalTotal = 0;
-            let cartItems = [];
+            records.forEach(rec => {
+                const plan = typeof rec.plan_data === 'string' ? JSON.parse(rec.plan_data) : rec.plan_data;
+                const createdAt = formatDate(rec.created_at);
 
-            cartEntries.forEach(([name, qty]) => {
-                const item = getItemInfo(name);
-                if (item) {
-                    originalTotal += item.price * qty;
-                    cartItems.push({
-                        name: name,
-                        price: item.price,
-                        qty: qty,
-                        subtotal: item.price * qty,
-                        type: 'single'
+                html += `<div class="main-box">`;
+
+                // 標頭：時間 + 刪除
+                html += `<div class="card-header">
+                    <div class="meta">點餐於 ${createdAt}</div>
+                    <button class="delete-btn" onclick="deleteRecord(${rec.id}, this)">刪除</button>
+                </div>`;
+
+                // 甜心卡標籤
+                const badge = plan.isSweet
+                    ? `<span class="sweet-badge" style="margin-bottom:0; vertical-align:middle;">💳 需有甜心卡</span>`
+                    : `<span class="no-sweet-badge" style="margin-bottom:0; vertical-align:middle;">免甜心卡</span>`;
+
+                // 總價
+                html += `<div class="price-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <div>
+                        <span class="price-total">$${plan.total}</span>
+                        <span class="price-savings">（省 $${plan.savings}）</span>
+                    </div>
+                    ${badge}
+                </div>`;
+
+                // 餐點明細（依原始順序排列）
+                if (plan.combos && plan.combos.length > 0) {
+                    plan.combos.forEach(c => {
+                        const isCombo = c.option_name !== '單點';
+                        const rowClass = isCombo ? 'combo' : 'single';
+                        const name = isCombo
+                            ? `【${c.option_name}】${c.items ? c.items.join(' + ') : ''} x${c.qty}`
+                            : `${c.items ? c.items[0] : ''} x${c.qty}`;
+                        html += `<div class="item-row ${rowClass}">
+                            <span class="item-name">${name}</span>
+                            <span class="item-price">$${c.price * c.qty}</span>
+                        </div>`;
                     });
                 }
-            });
 
-            let bestTotal = originalTotal;
-            let bestSavings = 0;
-            let usedCombos = [];
-            let matchedItems = new Set();
-
-            combosData.forEach(combo => {
-                const comboItems = parseComboItems(combo.combination_detail);
-                const canUseCombo = comboItems.length > 0 && comboItems.every(item => cartEntries.some(([name]) => name === item));
-                
-                if (canUseCombo) {
-                    const comboTotal = combo.combo_price;
-                    const individualTotal = comboItems.reduce((sum, name) => {
-                        const item = getItemInfo(name);
-                        return sum + (item ? item.price : 0);
-                    }, 0);
-
-                    const savings = individualTotal - comboTotal;
-                    
-                    if (savings > bestSavings) {
-                        bestSavings = savings;
-                        bestTotal = originalTotal - savings;
-                        usedCombos = [{ combo: combo, items: comboItems }];
-                        matchedItems = new Set(comboItems);
-                    }
+                // 額外單點
+                if (plan.single_items && plan.single_items.length > 0) {
+                    html += `<div class="section-label">額外單點</div>`;
+                    plan.single_items.forEach(item => {
+                        html += `<div class="item-row extra">
+                            <span class="item-name">${item.name} x${item.qty}</span>
+                            <span class="item-price">${item.price ? '$' + item.price : ''}</span>
+                        </div>`;
+                    });
                 }
+
+                // 多送品項
+                if (plan.extra_items && plan.extra_items.length > 0) {
+                    html += `<div class="section-label">多送品項</div>`;
+                    plan.extra_items.forEach(item => {
+                        html += `<div class="item-row extra">
+                            <span class="item-name">(多送) ${item.name} x${item.qty}</span>
+                            <span class="item-price">含在套餐</span>
+                        </div>`;
+                    });
+                }
+
+                // 替換明細
+                if (plan.replaced && plan.replaced.length > 0) {
+                    html += `<div class="section-label">替換明細</div>`;
+                    plan.replaced.forEach(r => {
+                        html += `<div class="replaced-block">🔄 ${r.from} → ${r.to} x${r.qty}</div>`;
+                    });
+                }
+
+                html += `</div>`;
             });
 
-            return {
-                cartItems: cartItems,
-                usedCombos: usedCombos,
-                matchedItems: matchedItems,
-                totalPrice: bestTotal,
-                savings: bestSavings
-            };
+            resultDiv.innerHTML = html;
         }
 
-        function renderHistory() {
-            const resultDiv = document.getElementById('result');
-            
-            const exampleOrder = {
-                date: '2024/3/17 14:30:00',
-                cart: { '大麥克': 2, '可口可樂（中）': 1, '薯條（大）': 2 }
-            };
-            
-            const calculated = calculateOrder(exampleOrder.cart);
-                
-            let html = `<div class="main-box">
-                <div class="order-date">${exampleOrder.date}</div>
-                <h2>📋 方案明細</h2>`;
+        async function deleteRecord(id, btn) {
+            if (!confirm('確定要刪除此筆歷史紀錄？')) return;
 
-            calculated.cartItems.forEach(item => {
-                const isInCombo = calculated.matchedItems.has(item.name);
-                if (!isInCombo) {
-                    html += `<div class="item-row single">
-                        <span class="item-name">單點 ${item.name} x${item.qty}</span>
-                        <span class="item-price">$${item.subtotal}元</span>
-                    </div>`;
+            try {
+                const response = await fetch(`/api/history/${id}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    btn.closest('.main-box').remove();
+                    if (document.querySelectorAll('.main-box').length === 0) {
+                        document.getElementById('result').innerHTML = `
+                            <div class="empty-state">
+                                <div style="font-size:48px;">📋</div>
+                                <div>尚無點餐紀錄</div>
+                                <p>在計算結果頁點擊「複製點餐指令」即會自動記錄！</p>
+                            </div>`;
+                    }
+                } else {
+                    alert(result.message || '刪除失敗，請稍後再試。');
                 }
-            });
-
-            calculated.usedCombos.forEach(uc => {
-                html += `<div class="item-row combo">
-                    <span class="item-name">套餐 ${uc.combo.combo_name}</span>
-                    <span class="item-price">$${uc.combo.combo_price}元</span>
-                </div>`;
-            });
-
-            html += `
-                <div class="total-section">
-                    <div class="total-row final">
-                        <span>共</span>
-                        <span>$${calculated.totalPrice}元</span>
-                    </div>
-                    <div class="total-row" style="color:#4CAF50">
-                        <span>節省了</span>
-                        <span>$${calculated.savings}元</span>
-                    </div>
-                </div>
-            </div>`;
-            
-            resultDiv.innerHTML = html;
+            } catch (error) {
+                alert('發生錯誤，請稍後再試。');
+            }
         }
 
         init();
     </script>
+    </div>
 </body>
 </html>

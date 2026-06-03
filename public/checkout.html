@@ -19,6 +19,11 @@
             padding-bottom: 100px;
         }
 
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
         .top-bar {
             display: flex;
             align-items: center;
@@ -160,17 +165,20 @@
             position: absolute;
             top: 10px;
             right: 10px;
-            background: #E91E63;
-            color: white;
-            border: none;
+            background: transparent;
+            color: #E52D27;
+            border: 1px solid #E52D27;
             border-radius: 20px;
-            padding: 5px 12px;
+            padding: 4px 10px;
             font-size: 12px;
             cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
         }
 
         .fav-btn-small:hover {
-            background: #C2185B;
+            background: #FDF2F2;
+            transform: translateY(-1px);
         }
 
         .plan-items {
@@ -382,32 +390,92 @@
             font-weight: bold;
             cursor: pointer;
         }
+
+        /* Tooltip styling */
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+        .tooltip-text {
+            visibility: hidden;
+            width: 240px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 10px;
+            position: absolute;
+            z-index: 999;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 13px;
+            line-height: 1.4;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            font-weight: normal;
+        }
+        .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Upsell card style changes */
+        .upsell-highlight-box {
+            background-color: #FFF8E1 !important;
+            border: 2px dashed #FF8F00 !important;
+            border-left: 6px solid #FF8F00 !important;
+            padding: 12px 15px !important;
+            margin-bottom: 12px !important;
+            border-radius: 8px !important;
+            font-size: 15px !important;
+            color: #D84315 !important;
+            animation: pulse-border 2s infinite alternate;
+        }
+
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 5px rgba(255, 143, 0, 0.2); }
+            100% { box-shadow: 0 0 12px rgba(255, 143, 0, 0.5); }
+        }
     </style>
 </head>
 
 <body>
-    <div class="top-bar">
-        <button class="back-btn" onclick="location.href='menu.html'">← 返回選擇</button>
-        <h1>最佳方案</h1>
-    </div>
-
-
-    <div class="filter-bar"
-        style="margin-bottom: 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-            <label for="sortSelect" style="color: white; font-weight: bold;">排序方式：</label>
-            <select id="sortSelect" onchange="renderPlans()"
-                style="padding: 8px; border-radius: 8px; border: none; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-weight:bold; color: #333;">
-                <option value="savings">最多節省</option>
-                <option value="price">最低總價</option>
-            </select>
+    <div class="container">
+        <div class="top-bar">
+            <button class="back-btn" onclick="location.href='menu.html'">← 返回選擇</button>
+            <h1>最佳方案</h1>
         </div>
-    </div>
 
-    <div id="result"></div>
-    <div id="recommendations"></div>
 
-    <!-- Modal HTML completely removed as per accordion strategy -->
+        <div class="filter-bar"
+            style="margin-bottom: 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <label for="sortSelect" style="color: white; font-weight: bold;">排序方式：</label>
+                <select id="sortSelect" onchange="renderPlans()"
+                    style="padding: 8px; border-radius: 8px; border: none; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-weight:bold; color: #333;">
+                    <option value="savings">最多節省</option>
+                    <option value="price">最低總價</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="result"></div>
+        <div id="recommendations"></div>
+
+        <!-- Modal HTML completely removed as per accordion strategy -->
 
     <script>
         let itemsData = [];
@@ -416,31 +484,158 @@
         let mustHave = {};
         let planOptions = [];
 
-        function togglePlanItems(index) {
-            const allItems = document.querySelectorAll('.plan-items');
-            const allBtns = document.querySelectorAll('.toggle-btn');
-            const allBoxes = document.querySelectorAll('.main-box');
+        let activeHistoryTimers = {};
+        let writtenHistoryPlans = new Set();
 
+        async function saveToHistorySilently(index) {
+            if (writtenHistoryPlans.has(index)) return;
+            const plan = planOptions[index];
+            if (!plan) return;
+
+            writtenHistoryPlans.add(index);
+            try {
+                await fetch('/api/history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(plan)
+                });
+            } catch (e) {
+                console.error('自動寫入歷史紀錄失敗:', e);
+            }
+        }
+
+        function togglePlanItems(index) {
+            const allBoxes = document.querySelectorAll('.main-box');
+            
             const content = document.getElementById('plan-items-' + index);
             const btn = document.getElementById('toggle-btn-' + index);
             const box = document.getElementById('main-box-' + index);
 
-            const isExpanding = !content.classList.contains('expanded');
+            if (!content || !btn) return;
 
-            // 先收合所有方案
-            allItems.forEach(el => el.classList.remove('expanded'));
-            allBtns.forEach(el => {
-                el.classList.remove('expanded');
-                el.textContent = '▼ 展開完整方案';
+            const isCurrentlyExpanded = content.classList.contains('expanded');
+
+            // 1. 收合所有其他方案，並清除其計時器
+            planOptions.forEach((_, idx) => {
+                if (idx !== index) {
+                    const otherContent = document.getElementById('plan-items-' + idx);
+                    const otherBtn = document.getElementById('toggle-btn-' + idx);
+                    const otherBox = document.getElementById('main-box-' + idx);
+                    
+                    if (otherContent && otherContent.classList.contains('expanded')) {
+                        otherContent.classList.remove('expanded');
+                        otherBtn.classList.remove('expanded');
+                        otherBtn.textContent = '▼ 展開完整方案';
+                        if (otherBox) otherBox.classList.remove('active-plan');
+                    }
+                    
+                    // 清除其他人的計時器
+                    if (activeHistoryTimers[idx]) {
+                        clearTimeout(activeHistoryTimers[idx]);
+                        delete activeHistoryTimers[idx];
+                    }
+                }
             });
-            allBoxes.forEach(el => el.classList.remove('active-plan'));
 
-            // 若原本為未展開狀態，則展開指定的方案
-            if (isExpanding) {
+            // 2. 處理當前點擊的方案
+            if (isCurrentlyExpanded) {
+                // 收合
+                content.classList.remove('expanded');
+                btn.classList.remove('expanded');
+                btn.textContent = '▼ 展開完整方案';
+                if (box) box.classList.remove('active-plan');
+                
+                // 清除當前計時器
+                if (activeHistoryTimers[index]) {
+                    clearTimeout(activeHistoryTimers[index]);
+                    delete activeHistoryTimers[index];
+                }
+            } else {
+                // 展開
+                allBoxes.forEach(el => el.classList.remove('active-plan'));
+                
                 content.classList.add('expanded');
                 btn.classList.add('expanded');
                 btn.textContent = '▲ 收合方案明細';
                 if (box) box.classList.add('active-plan');
+
+                // 啟動 30 秒自動寫入計時器 (如果尚未寫入過)
+                if (!writtenHistoryPlans.has(index)) {
+                    if (activeHistoryTimers[index]) {
+                        clearTimeout(activeHistoryTimers[index]);
+                    }
+                    activeHistoryTimers[index] = setTimeout(() => {
+                        saveToHistorySilently(index);
+                        delete activeHistoryTimers[index];
+                    }, 30000); // 30 秒
+                }
+            }
+        }
+
+        function scrollToPlan(index) {
+            const box = document.getElementById('main-box-' + index);
+            if (box) {
+                // 使用原生的 window.scrollTo 配合 behavior: 'smooth'，此為瀏覽器層級優化，絕對不會卡頓跳針
+                const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+                const targetY = box.getBoundingClientRect().top + currentScrollY - 80;
+
+                window.scrollTo({
+                    top: targetY,
+                    behavior: 'smooth'
+                });
+
+                let hasTriggered = false;
+                let isScrolling;
+                let safetyTimeout;
+
+                function triggerCompletion() {
+                    if (hasTriggered) return;
+                    hasTriggered = true;
+                    
+                    window.removeEventListener('scroll', checkScrollEnd);
+                    if (safetyTimeout) clearTimeout(safetyTimeout);
+
+                    // 1. 先收合其他卡片
+                    planOptions.forEach((_, idx) => {
+                        if (idx !== index) {
+                            const otherContent = document.getElementById('plan-items-' + idx);
+                            const otherBtn = document.getElementById('toggle-btn-' + idx);
+                            const otherBox = document.getElementById('main-box-' + idx);
+                            if (otherContent && otherContent.classList.contains('expanded')) {
+                                otherContent.classList.remove('expanded');
+                                otherBtn.classList.remove('expanded');
+                                otherBtn.textContent = '▼ 展開完整方案';
+                                if (otherBox) otherBox.classList.remove('active-plan');
+                            }
+                        }
+                    });
+
+                    // 2. 展開目標卡片
+                    const content = document.getElementById('plan-items-' + index);
+                    if (content && !content.classList.contains('expanded')) {
+                        togglePlanItems(index);
+                    }
+
+                    // 3. 高亮動畫
+                    box.style.boxShadow = '0 0 20px #2196F3';
+                    setTimeout(() => {
+                        box.style.boxShadow = '';
+                    }, 1500);
+                }
+
+                function checkScrollEnd() {
+                    window.clearTimeout(isScrolling);
+                    isScrolling = setTimeout(() => {
+                        triggerCompletion();
+                    }, 100);
+                }
+
+                window.addEventListener('scroll', checkScrollEnd);
+                
+                // 設一個安全保險，若 1.5 秒內沒觸發 scroll 結束（例如已經在該位置），直接執行
+                safetyTimeout = setTimeout(() => {
+                    triggerCompletion();
+                }, 1500);
             }
         }
 
@@ -566,15 +761,42 @@
 
             let validPlans = allRawPlans.filter(p => p.data && p.data.status === 'success' && p.data.combos && p.data.combos.length > 0);
 
-            // 去除重複方案（總價與組合完全相同的視為重複）
+            // 重新判定真正的 isSweet (只要 combos 裡面有甜心卡才算)
+            validPlans.forEach(p => {
+                p.isSweet = p.data.combos.some(c => c.option_name === '甜心卡');
+            });
+
+            // 取得將方案內所有品項攤平的特徵字串
+            const getItemsSignature = (plan) => {
+                const items = [];
+                if (plan.combos) {
+                    plan.combos.forEach(c => {
+                        c.items.forEach(it => {
+                            for (let i = 0; i < c.qty; i++) items.push(it);
+                        });
+                    });
+                }
+                if (plan.single_items) {
+                    plan.single_items.forEach(si => {
+                        for (let i = 0; i < si.qty; i++) {
+                            items.push(si.name);
+                        }
+                    });
+                }
+                return items.sort().join('|');
+            };
+
+            // 去除重複方案（總價與獲得的所有品項完全相同的視為重複）
             const uniquePlansMap = new Map();
             validPlans.forEach(p => {
-                const key = p.data.total + '|' + p.data.combos.map(c => c.option_name + c.items.join('')).join(',');
+                // 產生一個與「套餐如何組合」無關，只看「最終拿到什麼」的特徵字串
+                const key = p.data.total + '|' + getItemsSignature(p.data);
+
                 if (!uniquePlansMap.has(key)) {
                     uniquePlansMap.set(key, p);
                 } else {
                     const existing = uniquePlansMap.get(key);
-                    // 如果現有的是需要甜心卡，但新的是無甜心卡就能達成的相同方案，則用無甜心卡的覆蓋它
+                    // 若這兩個方案內容完全相同，且有一個標記為 isSweet 但另一個不是，優先保留不是的
                     if (existing.isSweet && !p.isSweet) {
                         uniquePlansMap.set(key, p);
                     }
@@ -615,9 +837,50 @@
                 let blockHtml = '';
                 blockHtml += `<div class="main-box" id="main-box-${planIndex}">`;
 
-                const sweetBadge = p.isSweet
-                    ? '<span style="background:#E91E63;color:white;font-size:13px;padding:4px 8px;border-radius:8px;vertical-align:middle;">💳 需有甜心卡</span>'
-                    : '<span style="background:#9E9E9E;color:white;font-size:13px;padding:4px 8px;border-radius:8px;vertical-align:middle;">免甜心卡</span>';
+                let sweetBadge = '';
+                if (p.isSweet) {
+                    sweetBadge = '<span style="border:1px solid #7B1FA2;color:#7B1FA2;background:#F3E5F5;font-size:12px;padding:3px 8px;border-radius:12px;vertical-align:middle;font-weight:600;">💳 需有甜心卡</span>';
+                } else {
+                    let diffAmount = 0;
+                    
+                    // 尋找「品項內容完全一樣（包含 combos 和 single_items），但使用了甜心卡」的方案
+                    // 我們將 combos 裡的商品與單點的商品全部展開成一個品項清單來做完全一致的比對
+                    const currentSignature = getItemsSignature(planData);
+                    
+                    // 在有甜心卡的方案中，找出品項特徵完全一致，且價格比當前低的方案
+                    // 為了能在畫面上跳轉，我們要在已渲染/排序的 validPlans 陣列中找出它的對應索引
+                    let sweetEquivalentIndex = -1;
+                    
+                    const sweetEquivalent = allRawPlans.find(sp => {
+                        return sp.isSweet && sp.data && sp.data.status === 'success' && 
+                               getItemsSignature(sp.data) === currentSignature && 
+                               sp.data.total < planData.total;
+                    });
+
+                    if (sweetEquivalent) {
+                        diffAmount = planData.total - sweetEquivalent.data.total;
+                        
+                        // 比對總價與組合，在當前已排序的 validPlans 找到對應的 planIndex
+                        sweetEquivalentIndex = validPlans.findIndex(vp => {
+                            return vp.isSweet && vp.data.total === sweetEquivalent.data.total &&
+                                   getItemsSignature(vp.data) === currentSignature;
+                        });
+                    }
+
+                    if (diffAmount > 0 && sweetEquivalentIndex !== -1) {
+                        sweetBadge = `
+                            <span class="tooltip-container" style="border:1px solid #757575;color:#616161;background:#F5F5F5;font-size:12px;padding:3px 8px;border-radius:12px;vertical-align:middle;font-weight:600;cursor:pointer;" onclick="scrollToPlan(${sweetEquivalentIndex}); event.stopPropagation();">
+                                免甜心卡 💡
+                                <span class="tooltip-text" style="pointer-events: auto;">
+                                    在相同餐點內容下，若搭配甜心卡可再省下 $${diffAmount} 元！<br/>
+                                    <strong style="color: #FFBA06; text-decoration: underline; display: block; margin-top: 5px;">👉 點擊此處跳轉至該方案</strong>
+                                </span>
+                            </span>
+                        `;
+                    } else {
+                        sweetBadge = '<span style="border:1px solid #757575;color:#616161;background:#F5F5F5;font-size:12px;padding:3px 8px;border-radius:12px;vertical-align:middle;font-weight:600;">免甜心卡</span>';
+                    }
+                }
 
                 blockHtml += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee;">
                     <div style="display: flex; align-items: baseline; gap: 8px;">
@@ -631,7 +894,7 @@
                 </div>`;
 
                 if (planData.upsell) {
-                    blockHtml += `<div style="background-color: #FFF3E0; border-left: 4px solid #FF9800; padding: 10px 12px; margin-bottom: 10px; border-radius: 6px; font-size: 15px; color: #E65100;">`;
+                    blockHtml += `<div class="upsell-highlight-box">`;
                     blockHtml += `<strong>✨ 超值升級：</strong>加 $${planData.upsell.extra_cost} 元送 ${planData.upsell.item_name}（原價 $${planData.upsell.original_price} 元）</div>`;
                 }
 
@@ -688,7 +951,7 @@
                 blockHtml += `<div style="text-align: right; color: #666; font-size: 13px; margin-top: 10px;">原價單點總計: $${planData.original_total}</div>`;
 
                 // Copy Button acting as Commit
-                blockHtml += `<button class="confirm-btn" onclick="copyOrderText(${planIndex})">📋 複製點餐指令</button>`;
+                blockHtml += `<button class="confirm-btn" onclick="copyOrderText(${planIndex})">📋 複製點餐方案</button>`;
 
                 blockHtml += `</div></div>`;
 
@@ -701,10 +964,31 @@
 
 
 
-        function saveFavorite(index) {
+        async function saveFavorite(index) {
             const plan = planOptions[index];
-            if (plan) {
-                alert('收藏功能敬請期待！\n方案: ' + plan.title);
+            if (!plan) return;
+
+            try {
+                const response = await fetch('/api/favorites', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(plan)
+                });
+
+                if (response.status === 401) {
+                    alert('請先返回首頁登入會員，才能使用收藏功能！');
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    alert('已成功加入收藏清單！');
+                } else {
+                    alert(result.message || '儲存失敗，請稍後再試。');
+                }
+            } catch (error) {
+                console.error('收藏失敗:', error);
+                alert('發生錯誤，請稍後再試。');
             }
         }
 
@@ -714,9 +998,14 @@
             const plan = planOptions[index];
             if (!plan) return;
 
-            // TODO: Here you would trigger silent API call to save history
-            // e.g., fetch('/api/history', { method: 'POST', body: JSON.stringify(plan) })
-            console.log('User decided on plan, silent tracking triggered.', plan.title);
+            // 1. 如果有運作中的 30 秒自動寫入計時器，將其清除
+            if (activeHistoryTimers[index]) {
+                clearTimeout(activeHistoryTimers[index]);
+                delete activeHistoryTimers[index];
+            }
+
+            // 2. 立即寫入歷史紀錄 (若先前尚未因滿 30 秒寫入)
+            saveToHistorySilently(index);
 
             let lines = [];
             lines.push(`【點餐指令】`);
@@ -755,6 +1044,7 @@
 
         init();
     </script>
+    </div>
 </body>
 
 </html>

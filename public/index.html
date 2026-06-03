@@ -21,10 +21,18 @@
             padding: 20px;
             text-align: center;
             position: relative;
+            min-height: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
         }
         .header h1 {
             color: white;
             font-size: 28px;
+            margin: 0;
+            margin-top: 40px;
+            white-space: nowrap;
         }
         .login-btn {
             position: absolute;
@@ -184,14 +192,19 @@
         <div class="modal-content" onclick="event.stopPropagation()">
             <h2 id="modalTitle">登入</h2>
             <input type="text" id="username" placeholder="帳號">
+            <input type="email" id="email" placeholder="電子信箱" style="display: none;">
             <input type="password" id="password" placeholder="密碼">
+            <input type="password" id="confirmPassword" placeholder="確認密碼" style="display: none;">
             <button class="submit-btn" onclick="handleSubmit()" id="submitBtn">登入</button>
-            <button class="toggle-btn" onclick="toggleMode()" id="toggleBtn">還沒有帳號？註冊</button>
+            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                <button class="toggle-btn" style="width: auto; padding: 5px; margin: 0; font-size: 14px;" onclick="toggleMode()" id="toggleBtn">還沒有帳號？註冊</button>
+                <button class="toggle-btn" style="width: auto; padding: 5px; margin: 0; font-size: 14px; color: #ff6b35;" onclick="toggleResetMode()" id="forgotBtn">忘記密碼？</button>
+            </div>
         </div>
     </div>
 
     <script>
-        let isLoginMode = true;
+        let modalMode = 'login'; // 'login', 'register', 'reset'
 
         async function checkLogin() {
             try {
@@ -216,49 +229,175 @@
 
         function showLoginModal() {
             document.getElementById('loginModal').classList.add('show');
+            setModalMode('login');
         }
 
         function closeLoginModal() {
             document.getElementById('loginModal').classList.remove('show');
             document.getElementById('username').value = '';
+            document.getElementById('email').value = '';
             document.getElementById('password').value = '';
+            document.getElementById('confirmPassword').value = '';
+        }
+
+        function setModalMode(mode) {
+            modalMode = mode;
+            const titleEl = document.getElementById('modalTitle');
+            const emailEl = document.getElementById('email');
+            const passwordEl = document.getElementById('password');
+            const confirmPasswordEl = document.getElementById('confirmPassword');
+            const submitBtn = document.getElementById('submitBtn');
+            const toggleBtn = document.getElementById('toggleBtn');
+            const forgotBtn = document.getElementById('forgotBtn');
+
+            if (mode === 'login') {
+                titleEl.textContent = '登入';
+                emailEl.style.display = 'none';
+                passwordEl.placeholder = '密碼';
+                passwordEl.style.display = 'block';
+                confirmPasswordEl.style.display = 'none';
+                submitBtn.textContent = '登入';
+                toggleBtn.style.display = 'inline-block';
+                toggleBtn.textContent = '還沒有帳號？註冊';
+                forgotBtn.style.display = 'inline-block';
+            } else if (mode === 'register') {
+                titleEl.textContent = '註冊';
+                emailEl.placeholder = '電子信箱';
+                emailEl.style.display = 'block';
+                passwordEl.placeholder = '密碼';
+                passwordEl.style.display = 'block';
+                confirmPasswordEl.placeholder = '確認密碼';
+                confirmPasswordEl.style.display = 'block';
+                submitBtn.textContent = '建立帳號';
+                toggleBtn.style.display = 'inline-block';
+                toggleBtn.textContent = '已有帳號？登入';
+                forgotBtn.style.display = 'none';
+            } else if (mode === 'reset') {
+                titleEl.textContent = '重設密碼';
+                emailEl.placeholder = '註冊時使用的 Email';
+                emailEl.style.display = 'block';
+                passwordEl.placeholder = '新密碼';
+                passwordEl.style.display = 'block';
+                confirmPasswordEl.placeholder = '確認新密碼';
+                confirmPasswordEl.style.display = 'block';
+                submitBtn.textContent = '重設密碼';
+                toggleBtn.style.display = 'inline-block';
+                toggleBtn.textContent = '返回登入';
+                forgotBtn.style.display = 'none';
+            }
         }
 
         function toggleMode() {
-            isLoginMode = !isLoginMode;
-            document.getElementById('modalTitle').textContent = isLoginMode ? '登入' : '註冊';
-            document.getElementById('submitBtn').textContent = isLoginMode ? '登入' : '註冊';
-            document.getElementById('toggleBtn').textContent = isLoginMode ? '還沒有帳號？註冊' : '已有帳號？登入';
+            if (modalMode === 'login') {
+                setModalMode('register');
+            } else {
+                setModalMode('login');
+            }
+        }
+
+        function toggleResetMode() {
+            setModalMode('reset');
         }
 
         async function handleSubmit() {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value.trim();
+            const confirmPassword = document.getElementById('confirmPassword').value.trim();
             
-            if (!username || !password) {
-                alert('請輸入帳號和密碼');
+            if (!username) {
+                alert('請輸入帳號');
                 return;
             }
 
-            const api = isLoginMode ? '/api/login' : '/api/register';
-            
-            try {
-                const response = await fetch(api, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    alert(isLoginMode ? '登入成功！' : '註冊成功！');
-                    closeLoginModal();
-                    checkLogin();
-                } else {
-                    alert(result.message);
+            if (modalMode === 'login') {
+                if (!password) {
+                    alert('請輸入密碼');
+                    return;
                 }
-            } catch (error) {
-                alert('發生錯誤，請稍後再試');
+
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        alert('登入成功！');
+                        closeLoginModal();
+                        checkLogin();
+                    } else {
+                        alert(result.message);
+                    }
+                } catch (error) {
+                    alert('發生錯誤，請稍後再試');
+                }
+            } else if (modalMode === 'register') {
+                const email = document.getElementById('email').value.trim();
+                if (!email) {
+                    alert('請輸入電子信箱');
+                    return;
+                }
+                if (!password || !confirmPassword) {
+                    alert('請輸入密碼與確認密碼');
+                    return;
+                }
+                if (password !== confirmPassword) {
+                    alert('密碼與確認密碼不一致');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, email, password })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        alert('註冊成功！已自動為您登入。');
+                        closeLoginModal();
+                        checkLogin();
+                    } else {
+                        alert(result.message);
+                    }
+                } catch (error) {
+                    alert('發生錯誤，請稍後再試');
+                }
+            } else if (modalMode === 'reset') {
+                const email = document.getElementById('email').value.trim();
+                if (!email) {
+                    alert('請輸入當初註冊的 Email');
+                    return;
+                }
+                if (!password || !confirmPassword) {
+                    alert('請輸入新密碼與確認密碼');
+                    return;
+                }
+                if (password !== confirmPassword) {
+                    alert('密碼與確認密碼不一致');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/reset-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, email, newPassword: password })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        alert(result.message);
+                        setModalMode('login');
+                        document.getElementById('email').value = '';
+                        document.getElementById('password').value = '';
+                        document.getElementById('confirmPassword').value = '';
+                    } else {
+                        alert(result.message);
+                    }
+                } catch (error) {
+                    alert('發生錯誤，請稍後再試');
+                }
             }
         }
 
