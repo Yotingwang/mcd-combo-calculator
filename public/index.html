@@ -29,9 +29,9 @@
         }
         .header h1 {
             color: white;
-            font-size: 28px;
+            font-size: 42px;
             margin: 0;
-            margin-top: 40px;
+            margin-top: 100px;
             white-space: nowrap;
         }
         .login-btn {
@@ -96,6 +96,8 @@
         .footer {
             display: flex;
             justify-content: center;
+            align-items: center;
+            width: 100%;
             gap: 20px;
             padding: 30px 20px;
         }
@@ -262,7 +264,7 @@
                 forgotBtn.style.display = 'inline-block';
             } else if (mode === 'register') {
                 titleEl.textContent = '註冊';
-                emailEl.placeholder = '電子信箱';
+                emailEl.placeholder = '電子信箱 (選填，忘記密碼用)';
                 emailEl.style.display = 'block';
                 passwordEl.placeholder = '密碼';
                 passwordEl.style.display = 'block';
@@ -334,10 +336,6 @@
                 }
             } else if (modalMode === 'register') {
                 const email = document.getElementById('email').value.trim();
-                if (!email) {
-                    alert('請輸入電子信箱');
-                    return;
-                }
                 if (!password || !confirmPassword) {
                     alert('請輸入密碼與確認密碼');
                     return;

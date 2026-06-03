@@ -40,30 +40,29 @@ def generate_combo_id_by_option(conn, option_id):
     opt_num = re.search(r'\d+', option_id)
     if not opt_num:
         return generate_new_id(conn, "all_combinations", "combination_id", "C", width=5)
-    
-    prefix = opt_num.group()
-    
+
+    prefix = opt_num.group()          # 例：'004'
+    id_prefix = f"C{prefix}"          # 例：'C004'
+
     sql = """
-    SELECT combination_id FROM all_combinations 
+    SELECT combination_id FROM all_combinations
     WHERE option_id = :opt AND combination_id LIKE :prefix
-    ORDER BY LENGTH(combination_id) DESC, combination_id DESC 
+    ORDER BY LENGTH(combination_id) DESC, combination_id DESC
     LIMIT 1
     """
-    result = conn.execute(text(sql), {"opt": option_id, "prefix": f"C{prefix}%"}).fetchone()
-    
+    result = conn.execute(text(sql), {"opt": option_id, "prefix": f"{id_prefix}%"}).fetchone()
+
     if result:
+        existing_id = result[0]                          # 例：'C004012'
+        suffix = existing_id[len(id_prefix):]            # 去掉前綴後剩 '012'
         try:
-            match = re.search(r'\d+', result[0])
-            if match:
-                new_num = int(match.group()) + 1
-            else:
-                new_num = 1
+            new_num = int(suffix) + 1
         except ValueError:
             new_num = 1
     else:
         new_num = 1
-    
-    return f"C{prefix}{str(new_num).zfill(3)}"
+
+    return f"{id_prefix}{str(new_num).zfill(3)}"
 
 
 # 通用 ID 生成器
@@ -615,11 +614,14 @@ elif mode == "➕ 新增資料":
                     try:
                         with engine.connect() as conn:
                             with conn.begin():
+                                user_id = selected_admin
+                                batch_id = f"ADD_ITEM_{datetime.now():%Y%m%d_%H%M%S}"
+
+                                # 1. 新增單品
                                 nid = generate_new_id(conn, "items", "item_id", type_map[itype], width=5)
                                 conn.execute(text(
                                     "INSERT INTO items (item_id, item_name, item_type, price) VALUES (:id, :name, :type, :price)"),
                                              {"id": nid, "name": name, "type": itype, "price": price})
-                                user_id = selected_admin
                                 new_item_data = {
                                     "item_id": nid,
                                     "item_name": name,
@@ -627,19 +629,47 @@ elif mode == "➕ 新增資料":
                                     "price": price
                                 }
                                 insert_edit_log(
-                                    conn,
-                                    table="items",           
-                                    pk=nid,                  
-                                    action="INSERT",         
-                                    old_data=None,
-                                    new_data=new_item_data,
-                                    admin=user_id           
+                                    conn, table="items", pk=nid, action="INSERT",
+                                    old_data=None, new_data=new_item_data,
+                                    admin=user_id, batch_id=batch_id
                                 )
 
-                        st.success(f"✅ 單品新增成功！新 ID 為：{nid}")
+                                # 2. 若非 GROUP 類型，自動建立 O001（單點）套餐記錄
+                                single_cid = None
+                                single_did = None
+                                if itype != "GROUP":
+                                    single_cid = generate_combo_id_by_option(conn, "O001")
+                                    combo_name = f"{name} x1"
+                                    conn.execute(text(
+                                        "INSERT INTO all_combinations (combination_id, combination_name, option_id, price) VALUES (:cid, :name, :oid, :price)"),
+                                        {"cid": single_cid, "name": combo_name, "oid": "O001", "price": price}
+                                    )
+
+                                    # 取得下一個 detail_id
+                                    last_did = conn.execute(text(
+                                        "SELECT detail_id FROM combinations_detail WHERE detail_id LIKE 'DT%' ORDER BY LENGTH(detail_id) DESC, detail_id DESC LIMIT 1"
+                                    )).fetchone()
+                                    next_num = (int(re.search(r'\d+', last_did[0]).group()) + 1) if last_did else 1
+                                    single_did = f"DT{str(next_num).zfill(5)}"
+
+                                    conn.execute(text(
+                                        "INSERT INTO combinations_detail (detail_id, combination_id, item_id, quantity) VALUES (:did, :cid, :iid, 1)"),
+                                        {"did": single_did, "cid": single_cid, "iid": nid}
+                                    )
+                                    insert_edit_log(
+                                        conn, table="all_combinations", pk=single_cid, action="INSERT",
+                                        old_data=None,
+                                        new_data={"combination_id": single_cid, "combination_name": combo_name, "option_id": "O001", "price": price},
+                                        admin=user_id, batch_id=batch_id
+                                    )
+
+                        st.success(f"✅ 單品新增成功！Item ID：{nid}")
+                        if single_cid:
+                            st.info(f"📦 已自動建立單點套餐：{single_cid}（{name} x1，${price}），Detail ID：{single_did}")
                         st.balloons()
                     except Exception as e:
                         st.error(f"新增失敗: {e}")
+
 
 
     # --- 2. 新增套餐 (顯示 Detail IDs) ---

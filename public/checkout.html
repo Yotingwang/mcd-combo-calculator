@@ -572,10 +572,64 @@
             }
         }
 
-        function scrollToPlan(index) {
+        function scrollToPlan(index, triggerElement) {
             const box = document.getElementById('main-box-' + index);
-            if (box) {
-                // 使用原生的 window.scrollTo 配合 behavior: 'smooth'，此為瀏覽器層級優化，絕對不會卡頓跳針
+            if (!box) return;
+
+            // 1. 記錄點擊當下的錨點位置（視覺鎖定）
+            let anchorRectBefore = 0;
+            if (triggerElement) {
+                anchorRectBefore = triggerElement.getBoundingClientRect().top;
+            }
+
+            // 2. 同時執行所有收合與展開的排版變更
+            planOptions.forEach((_, idx) => {
+                if (idx !== index) {
+                    const otherContent = document.getElementById('plan-items-' + idx);
+                    const otherBtn = document.getElementById('toggle-btn-' + idx);
+                    const otherBox = document.getElementById('main-box-' + idx);
+                    if (otherContent && otherContent.classList.contains('expanded')) {
+                        otherContent.classList.remove('expanded');
+                        if (otherBtn) {
+                            otherBtn.classList.remove('expanded');
+                            otherBtn.textContent = '▼ 展開完整方案';
+                        }
+                        if (otherBox) otherBox.classList.remove('active-plan');
+                    }
+                }
+            });
+
+            // 2. 立即展開目標方案（但不收合舊方案，保持 DOM 高度，避免瞬間排版位移）
+            const content = document.getElementById('plan-items-' + index);
+            const btn = document.getElementById('toggle-btn-' + index);
+            if (content && !content.classList.contains('expanded')) {
+                content.classList.add('expanded');
+                if (btn) {
+                    btn.classList.add('expanded');
+                    btn.textContent = '▲ 收合方案明細';
+                }
+                box.classList.add('active-plan');
+                
+                // 啟動 30 秒自動寫入計時器 (如果尚未寫入過)
+                if (!writtenHistoryPlans.has(index)) {
+                    if (activeHistoryTimers[index]) clearTimeout(activeHistoryTimers[index]);
+                    activeHistoryTimers[index] = setTimeout(() => {
+                        saveToHistorySilently(index);
+                        delete activeHistoryTimers[index];
+                    }, 30000);
+                }
+            }
+
+            // 3. 計算剛才的 DOM 變更導致畫面偏移了多少，並「瞬間補償」捲動高度
+            // 由於這發生在同一個執行緒，瀏覽器不會渲染出跳動畫面
+            if (triggerElement) {
+                const anchorRectAfter = triggerElement.getBoundingClientRect().top;
+                const shift = anchorRectAfter - anchorRectBefore;
+                window.scrollBy(0, shift);
+            }
+
+            // 4. 現在畫面視覺上已經被鎖死，接著執行平滑滑動到目標方案
+            setTimeout(() => {
                 const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
                 const targetY = box.getBoundingClientRect().top + currentScrollY - 80;
 
@@ -584,59 +638,13 @@
                     behavior: 'smooth'
                 });
 
-                let hasTriggered = false;
-                let isScrolling;
-                let safetyTimeout;
-
-                function triggerCompletion() {
-                    if (hasTriggered) return;
-                    hasTriggered = true;
-                    
-                    window.removeEventListener('scroll', checkScrollEnd);
-                    if (safetyTimeout) clearTimeout(safetyTimeout);
-
-                    // 1. 先收合其他卡片
-                    planOptions.forEach((_, idx) => {
-                        if (idx !== index) {
-                            const otherContent = document.getElementById('plan-items-' + idx);
-                            const otherBtn = document.getElementById('toggle-btn-' + idx);
-                            const otherBox = document.getElementById('main-box-' + idx);
-                            if (otherContent && otherContent.classList.contains('expanded')) {
-                                otherContent.classList.remove('expanded');
-                                otherBtn.classList.remove('expanded');
-                                otherBtn.textContent = '▼ 展開完整方案';
-                                if (otherBox) otherBox.classList.remove('active-plan');
-                            }
-                        }
-                    });
-
-                    // 2. 展開目標卡片
-                    const content = document.getElementById('plan-items-' + index);
-                    if (content && !content.classList.contains('expanded')) {
-                        togglePlanItems(index);
-                    }
-
-                    // 3. 高亮動畫
-                    box.style.boxShadow = '0 0 20px #2196F3';
-                    setTimeout(() => {
-                        box.style.boxShadow = '';
-                    }, 1500);
-                }
-
-                function checkScrollEnd() {
-                    window.clearTimeout(isScrolling);
-                    isScrolling = setTimeout(() => {
-                        triggerCompletion();
-                    }, 100);
-                }
-
-                window.addEventListener('scroll', checkScrollEnd);
-                
-                // 設一個安全保險，若 1.5 秒內沒觸發 scroll 結束（例如已經在該位置），直接執行
-                safetyTimeout = setTimeout(() => {
-                    triggerCompletion();
+                // 高亮動畫
+                box.style.transition = 'box-shadow 0.3s ease-in-out';
+                box.style.boxShadow = '0 0 20px #2196F3';
+                setTimeout(() => {
+                    box.style.boxShadow = '';
                 }, 1500);
-            }
+            }, 50);
         }
 
         function parseComboItems(detail) {
@@ -869,7 +877,7 @@
 
                     if (diffAmount > 0 && sweetEquivalentIndex !== -1) {
                         sweetBadge = `
-                            <span class="tooltip-container" style="border:1px solid #757575;color:#616161;background:#F5F5F5;font-size:12px;padding:3px 8px;border-radius:12px;vertical-align:middle;font-weight:600;cursor:pointer;" onclick="scrollToPlan(${sweetEquivalentIndex}); event.stopPropagation();">
+                            <span class="tooltip-container" style="border:1px solid #757575;color:#616161;background:#F5F5F5;font-size:12px;padding:3px 8px;border-radius:12px;vertical-align:middle;font-weight:600;cursor:pointer;" onclick="scrollToPlan(${sweetEquivalentIndex}, this); event.stopPropagation();">
                                 免甜心卡 💡
                                 <span class="tooltip-text" style="pointer-events: auto;">
                                     在相同餐點內容下，若搭配甜心卡可再省下 $${diffAmount} 元！<br/>

@@ -57,25 +57,25 @@ app.get('/api/combos', (req, res) => {
 
 // ── 驗證 API ──────────────────────────────────
 app.post('/api/register', async (req, res) => {
-  const { username, email, password } = req.body;
+  let { username, email, password } = req.body;
+  email = email ? email.trim() : null;
 
-  if (!username || !email || !password) {
-    return res.json({ status: 'error', message: '請輸入完整資訊' });
+  if (!username || !password) {
+    return res.json({ status: 'error', message: '請輸入帳號與密碼' });
   }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return res.json({ status: 'error', message: 'Email 格式不正確' });
+  if (email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.json({ status: 'error', message: 'Email 格式不正確' });
+    }
   }
 
   connection.query('SELECT id FROM users WHERE username = ?', [username], async (err, results) => {
     if (err) return res.json({ status: 'error', message: err.message });
     if (results.length > 0) return res.json({ status: 'error', message: '帳號已被使用' });
 
-    connection.query('SELECT id FROM users WHERE email = ?', [email], async (err, emailResults) => {
-      if (err) return res.json({ status: 'error', message: err.message });
-      if (emailResults.length > 0) return res.json({ status: 'error', message: '此 Email 已被註冊' });
-
+    const proceedRegistration = async () => {
       try {
         const hashedPassword = await bcrypt.hash(password, 10);
         const insertSql = 'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)';
@@ -87,7 +87,17 @@ app.post('/api/register', async (req, res) => {
       } catch (hashError) {
         res.json({ status: 'error', message: '密碼加密失敗' });
       }
-    });
+    };
+
+    if (email) {
+      connection.query('SELECT id FROM users WHERE email = ?', [email], (err, emailResults) => {
+        if (err) return res.json({ status: 'error', message: err.message });
+        if (emailResults.length > 0) return res.json({ status: 'error', message: '此 Email 已被註冊' });
+        proceedRegistration();
+      });
+    } else {
+      proceedRegistration();
+    }
   });
 });
 
