@@ -479,7 +479,6 @@
 
     <script>
         let itemsData = [];
-        let combosData = [];
         let cart = {};
         let mustHave = {};
         let planOptions = [];
@@ -670,7 +669,7 @@
                 return;
             }
 
-            await Promise.all([loadItemsData(), loadCombosData()]);
+            await loadItemsData();
             calculateOptimal();
         }
 
@@ -683,18 +682,6 @@
                 }
             } catch (error) {
                 console.error('載入資料失敗:', error);
-            }
-        }
-
-        async function loadCombosData() {
-            try {
-                const response = await fetch('/api/combos');
-                const result = await response.json();
-                if (result.status === 'success') {
-                    combosData = result.data;
-                }
-            } catch (error) {
-                console.error('載入套餐失敗:', error);
             }
         }
 
@@ -794,11 +781,15 @@
                 return items.sort().join('|');
             };
 
-            // 去除重複方案（總價與獲得的所有品項完全相同的視為重複）
+            // 去除重複方案（總價與獲得的所有品項完全相同的視為重複，加價升級方案獨立保留）
             const uniquePlansMap = new Map();
             validPlans.forEach(p => {
                 // 產生一個與「套餐如何組合」無關，只看「最終拿到什麼」的特徵字串
-                const key = p.data.total + '|' + getItemsSignature(p.data);
+                const signature = getItemsSignature(p.data);
+                
+                // 如果是超值升級方案，在去重 key 中加入 upsell 標記避免被普通方案吃掉
+                const upsellTag = p.data.upsell ? `|upsell:${p.data.upsell.item_id}:${p.data.upsell.extra_cost}` : '';
+                const key = p.data.total + '|' + signature + upsellTag;
 
                 if (!uniquePlansMap.has(key)) {
                     uniquePlansMap.set(key, p);
@@ -841,6 +832,8 @@
                     replaced: planData.replaced || []
                 };
                 planOptions.push(planForModal);
+
+                const hasPromo = planData.combos.some(c => c.promo);
 
                 let blockHtml = '';
                 blockHtml += `<div class="main-box" id="main-box-${planIndex}">`;
@@ -890,6 +883,11 @@
                     }
                 }
 
+                let promoBadge = '';
+                if (hasPromo) {
+                    promoBadge = '<span style="border:1px solid #E65100;color:#E65100;background:#FFF3E0;font-size:12px;padding:3px 8px;border-radius:12px;vertical-align:middle;font-weight:600;">📄 需優惠券</span>';
+                }
+
                 blockHtml += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee;">
                     <div style="display: flex; align-items: baseline; gap: 8px;">
                         <span style="font-size: 22px; font-weight: bold; color: #ff6b35;">$${planData.total}</span>
@@ -897,7 +895,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <button class="fav-btn-small" style="position: static; padding: 4px 8px;" onclick="saveFavorite(${planIndex})">❤️ 收藏</button>
-                        ${sweetBadge}
+                        ${sweetBadge} ${promoBadge}
                     </div>
                 </div>`;
 
@@ -931,9 +929,38 @@
                         displayName = `【${c.option_name}】(${c.items.join(' + ')}) x${c.qty}`;
                     }
 
+                    let promoText = '';
+                    let rewardRow = '';
+                    if (c.promo) {
+                        promoText = `<br><span style="display:inline-block;font-size:12px;color:#fff;font-weight:600;background:#E65100;padding:2px 8px;border-radius:4px;margin-top:2px;">📄 需使用優惠券：${c.promo.promo_name}</span>`;
+                        const costText = c.promo.extra_cost > 0 ? `加價 $${c.promo.extra_cost}` : '贈送';
+                        rewardRow = `<div class="item-row new" style="border-left:2px dashed #E65100;margin-left:16px;">
+                            <span class="item-name">(${costText}) ${c.promo.reward_name}</span>
+                            <span class="item-price">-$0</span>
+                        </div>`;
+                    }
+
                     blockHtml += `<div class="item-row ${rowClass}">
-                        <span class="item-name">${displayName}</span>
+                        <span class="item-name">${displayName}${promoText}</span>
                         <span class="item-price">$${c.price * c.qty}元</span>
+                    </div>${rewardRow}`;
+
+                    // combo 多送品項（縮排在此 combo 下方）
+                    if (c.combo_extra_items) {
+                        c.combo_extra_items.forEach(item => {
+                            blockHtml += `<div class="item-row new" style="border-left:2px dashed #FF9800;margin-left:16px;">
+                                <span class="item-name">(多送) ${item.name} x${item.qty}</span>
+                                <span class="item-price">含在套餐</span>
+                            </div>`;
+                        });
+                    }
+                });
+
+                // Extra Items（未被 combo 認領的零散多送品項）
+                planData.extra_items.forEach(item => {
+                    blockHtml += `<div class="item-row new" style="border-left:2px dashed #FF9800;margin-left:16px;">
+                        <span class="item-name">(多送) ${item.name} x${item.qty}</span>
+                        <span class="item-price">含在套餐</span>
                     </div>`;
                 });
 
@@ -944,14 +971,6 @@
                     blockHtml += `<div class="item-row single">
                         <span class="item-name">單點 ${item.name} x${item.qty}</span>
                         <span class="item-price">$${price}元</span>
-                    </div>`;
-                });
-
-                // Extra Items
-                planData.extra_items.forEach(item => {
-                    blockHtml += `<div class="item-row new">
-                        <span class="item-name">(多送) ${item.name} x${item.qty}</span>
-                        <span class="item-price">含在套餐</span>
                     </div>`;
                 });
 

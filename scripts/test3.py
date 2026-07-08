@@ -1,6 +1,8 @@
 import sys
 import json
 import io
+import os
+from dotenv import load_dotenv
 original_stdout = sys.stdout
 sys.stdout = sys.stderr
 import io
@@ -95,10 +97,51 @@ def get_group_links(cursor):
         group_map[row['parent_item_id']].append((row['child_item_id'], row['extra_cost']))
     return group_map
 
+def fetch_active_promotions(cursor):
+    cursor.execute("""
+        SELECT p.*, i.item_name AS reward_name
+        FROM promotions p
+        LEFT JOIN items i ON p.reward_item_id = i.item_id
+        WHERE p.is_active = 1
+          AND (p.start_time IS NULL OR p.start_time <= NOW())
+          AND (p.end_time IS NULL OR p.end_time >= NOW())
+    """)
+    return cursor.fetchall()
+
+def check_promotions_for_combo(combo_entry, promotions):
+    if not promotions:
+        return None
+    combo_id = combo_entry["combination_id"]
+    option_id = combo_entry.get("option_id", "")
+    items = combo_entry.get("item_counts", {})
+    base_combo_id = combo_id.split("_")[0]
+    for promo in promotions:
+        cond_type = promo["condition_type"]
+        cond_values = [v.strip() for v in promo["condition_value"].split(",")]
+        matched = False
+        if cond_type == "OPTION":
+            if option_id in cond_values:
+                matched = True
+        elif cond_type == "COMBINATION":
+            if base_combo_id in cond_values or combo_id in cond_values:
+                matched = True
+        elif cond_type == "ITEM":
+            if any(item_id in cond_values for item_id in items):
+                matched = True
+        if matched:
+            return {
+                "promo_id": promo["promo_id"],
+                "promo_name": promo["promo_name"],
+                "reward_item_id": promo["reward_item_id"],
+                "reward_name": promo.get("reward_name", ""),
+                "extra_cost": promo["extra_cost"]
+            }
+    return None
+
 def fetch_all_combos_from_db(cursor, include_sweetheart):
     exclude_clause = "" if include_sweetheart else "AND ac.option_id != 'O009'"
     sql = f"""
-        SELECT ac.combination_id, ac.combination_name, ac.price, mo.option_name, cd.item_id, cd.quantity
+        SELECT ac.combination_id, ac.combination_name, ac.price, mo.option_name, ac.option_id, cd.item_id, cd.quantity
         FROM all_combinations ac
         JOIN menu_options mo ON ac.option_id = mo.option_id
         JOIN combinations_detail cd ON ac.combination_id = cd.combination_id
@@ -107,12 +150,13 @@ def fetch_all_combos_from_db(cursor, include_sweetheart):
     cursor.execute(sql)
     rows = cursor.fetchall()
 
-    combo_dict = defaultdict(lambda: {"option_name": "", "combination_name": "", "price": 0, "items": []})
+    combo_dict = defaultdict(lambda: {"option_name": "", "combination_name": "", "price": 0, "option_id": "", "items": []})
     for r in rows:
         cid = r["combination_id"]
         combo_dict[cid]["option_name"] = r["option_name"]
         combo_dict[cid]["combination_name"] = r["combination_name"]
         combo_dict[cid]["price"] = r["price"]
+        combo_dict[cid]["option_id"] = r["option_id"]
         for _ in range(r["quantity"]):
             combo_dict[cid]["items"].append(r["item_id"])
     return combo_dict
@@ -139,6 +183,7 @@ def expand_combos(combo_dict, item_type_map, group_map, item_name_map):
             expanded_combos.append({
                 "combination_id": cid,
                 "option_name": data["option_name"],
+                "option_id": data["option_id"],
                 "combination_detail": data["combination_name"],
                 "price": base_price,
                 "item_counts": dict(Counter(solid_items))
@@ -167,12 +212,57 @@ def expand_combos(combo_dict, item_type_map, group_map, item_name_map):
             expanded_combos.append({
                 "combination_id": virtual_cid,
                 "option_name": data["option_name"],
+                "option_id": data["option_id"],
                 "combination_detail": detail_name,
                 "price": base_price + extra_price_sum,
                 "item_counts": dict(Counter(final_items))
             })
             
     return expanded_combos
+
+def inject_promo_variants(expanded_combos, promotions, item_name_map):
+    """針對每個已展開套餐，比對優惠規則，生成含贈品的虛擬套餐變體。
+    使 ILP 解題器能自動評估是否使用優惠券來免費獲得贈品。」"""
+    if not promotions:
+        return expanded_combos
+    promo_variants = []
+    for combo in expanded_combos:
+        combo_id = combo["combination_id"]
+        option_id = combo.get("option_id", "")
+        items = combo.get("item_counts", {})
+        base_combo_id = combo_id.split("_")[0]
+        for promo in promotions:
+            cond_type = promo["condition_type"]
+            cond_values = [v.strip() for v in promo["condition_value"].split(",")]
+            matched = False
+            if cond_type == "OPTION":
+                if option_id in cond_values:
+                    matched = True
+            elif cond_type == "COMBINATION":
+                if base_combo_id in cond_values or combo_id in cond_values:
+                    matched = True
+            elif cond_type == "ITEM":
+                if any(item_id in cond_values for item_id in items):
+                    matched = True
+            if matched:
+                reward_id = promo["reward_item_id"]
+                new_item_counts = dict(combo["item_counts"])
+                new_item_counts[reward_id] = new_item_counts.get(reward_id, 0) + 1
+                new_combo_id = f"{combo_id}_PROMO_{promo['promo_id']}"
+                new_price = combo["price"] + promo["extra_cost"]
+                promo_variant = dict(combo)
+                promo_variant["combination_id"] = new_combo_id
+                promo_variant["item_counts"] = new_item_counts
+                promo_variant["price"] = new_price
+                promo_variant["promo"] = {
+                    "promo_id": promo["promo_id"],
+                    "promo_name": promo["promo_name"],
+                    "reward_item_id": reward_id,
+                    "reward_name": promo.get("reward_name", item_name_map.get(reward_id, reward_id)),
+                    "extra_cost": promo["extra_cost"]
+                }
+                promo_variants.append(promo_variant)
+    return expanded_combos + promo_variants
 
 # 篩選完全符合需求的套餐 (已在展開後)
 def filter_strict_combos(expanded_combos, required_items):
@@ -241,7 +331,7 @@ def build_ilp_with_substitutes(required_items, combo_data, substitute_groups, mu
     return problem, vars
 
 # 解題與輸出，並比較差異
-def solve_and_display(problem, combo_data, variables, single_total_price, item_name_map, required_items, substitute_groups, silent=False):
+def solve_and_display(problem, combo_data, variables, single_total_price, item_name_map, required_items, substitute_groups, silent=False, must_have_items=None, promotions=None):
     problem.solve(PULP_CBC_CMD(msg=False))
 
     if problem.status != 1: # 1 is optimal
@@ -274,13 +364,22 @@ def solve_and_display(problem, combo_data, variables, single_total_price, item_n
         for i, count in c["item_counts"].items():
             name = item_name_map.get(i, i)
             items_names.extend([name] * count)
-        result_payload["combos"].append({
+        combo_entry = {
             "combo_name": c['combination_detail'],
             "option_name": c['option_name'],
             "qty": qty,
             "price": c['price'],
             "items": items_names
-        })
+        }
+        if "promo" in c:
+            reward_id = c["promo"]["reward_item_id"]
+            reward_name = item_name_map.get(reward_id, reward_id)
+            c["promo"]["reward_name"] = reward_name
+            combo_entry["promo"] = c["promo"]
+            if reward_name in items_names:
+                items_names.remove(reward_name)
+            combo_entry["items"] = items_names
+        result_payload["combos"].append(combo_entry)
         if not silent: print(f"- {c['option_name']} - {c['combination_detail']}: {qty} 份")
 
     cost = problem.objective.value()
@@ -313,6 +412,10 @@ def solve_and_display(problem, combo_data, variables, single_total_price, item_n
                 optimized_left[item_id] -= used
                 unchanged.append((item_id, used))
             else:
+                # must_have 品項不允許透過替代群滿足，直接記為未滿足跳出
+                if must_have_items and item_id in must_have_items:
+                    replaced.append((item_id, None, user_left[item_id], 0))
+                    break
                 group = group_lookup.get(item_id, {item_id})
                 found_sub = False
                 for alt in group:
@@ -332,10 +435,36 @@ def solve_and_display(problem, combo_data, variables, single_total_price, item_n
                     replaced.append((item_id, None, user_left[item_id], 0))
                     break  
 
+    extra_pool = {}
     for item_id, qty in optimized_left.items():
         if qty > 0:
             extra.append((item_id, qty))
+            extra_pool[item_id] = qty
             result_payload["extra_items"].append({"name": item_name_map.get(item_id, item_id), "qty": qty})
+
+    # 將 extra items 歸屬到產生它們的 combo
+    for combo_entry in result_payload["combos"]:
+        combo_extras = []
+        for cid, qty in optimal.items():
+            c = next(x for x in combo_data if x["combination_id"] == cid)
+            if c["combination_detail"] != combo_entry["combo_name"] or c["option_name"] != combo_entry["option_name"]:
+                continue
+            for item_id, count in c["item_counts"].items():
+                total = count * qty
+                if item_id in extra_pool and extra_pool[item_id] > 0:
+                    taken = min(total, extra_pool[item_id])
+                    if taken > 0:
+                        combo_extras.append({"name": item_name_map.get(item_id, item_id), "qty": taken})
+                        extra_pool[item_id] -= taken
+        if combo_extras:
+            combo_entry["combo_extra_items"] = combo_extras
+
+    # 重建 extra_items：只保留未被任何 combo 認領的部分
+    result_payload["extra_items"] = [
+        {"name": item_name_map.get(item_id, item_id), "qty": qty}
+        for item_id, qty in extra_pool.items()
+        if qty > 0
+    ]
 
     for item_id, qty in user_left.items():
         if qty > 0:
@@ -349,17 +478,18 @@ def solve_and_display(problem, combo_data, variables, single_total_price, item_n
 if __name__ == "__main__":
     has_sweetheart_card, input_req, input_must_have = get_required_items_from_user()
     substitute_groups = get_substitute_groups()
+    load_dotenv()
     config = {
-        'host': 'localhost',
-        'user': 'root',
-        'password': 'mark1015',
-        'database': 'mcdonalds_db',  # ⭐ 已切換到新資料庫
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'user': os.getenv('DB_USER', 'root'),
+        'password': os.getenv('DB_PASSWORD', 'mark1015'),
+        'database': os.getenv('DB_NAME', 'mcdonalds_db'),
         'charset': 'utf8mb4'
     }
     
     conn, cursor = connect_to_db(config)
     if cursor is None:
-        print("無法連線至資料庫，請確認 test3.py 中的密碼是否正確！")
+        print("無法連線至資料庫，請確認 .env 檔案中的密碼是否正確！")
         import sys
         sys.exit(1)
         
@@ -376,8 +506,12 @@ if __name__ == "__main__":
 
         must_have_items = {}
         for k, v in input_must_have.items():
+            # 只保留實際在 required_items 中的品項（避免舊殘留資料造成無解）
+            if v is False:
+                continue
             id_val = name_to_id.get(k, k)
-            must_have_items[id_val] = required_items.get(id_val, 1)
+            if id_val in required_items:
+                must_have_items[id_val] = required_items[id_val]
 
         with open("debug_musthave.txt", "w", encoding="utf-8") as df:
             df.write(f"sys.argv: {sys.argv}\n")
@@ -388,6 +522,7 @@ if __name__ == "__main__":
 
 
         group_map = get_group_links(cursor)
+        active_promotions = fetch_active_promotions(cursor)
         
         total_price = fetch_item_prices(cursor, required_items, item_name_map)
 
@@ -396,6 +531,9 @@ if __name__ == "__main__":
         
         # 2. 展開：將有 GROUP 的套餐，依據 item_group_links 自動長出替換品項變種
         expanded_combos = expand_combos(raw_combos, item_type_map, group_map, item_name_map)
+
+        # 3. 促銷注入：對每組已展開套餐，生成含贈品的虛擬套餐變體
+        expanded_combos = inject_promo_variants(expanded_combos, active_promotions, item_name_map)
 
         res_1 = None
         res_2 = None
@@ -407,17 +545,19 @@ if __name__ == "__main__":
             combos_1 = filter_strict_combos(expanded_combos, required_items)
             if combos_1:
                 problem_1, vars_1 = build_ilp_strict(required_items, combos_1)
-                res_1 = solve_and_display(problem_1, combos_1, vars_1, total_price, item_name_map, required_items, substitute_groups)
+                res_1 = solve_and_display(problem_1, combos_1, vars_1, total_price, item_name_map, required_items, substitute_groups, must_have_items=must_have_items, promotions=active_promotions)
 
             print("\\n🔄【功能二】允許替代群的進階最佳化組合（含甜心卡）")
             combos_2 = filter_flexible_combos(expanded_combos, required_items, substitute_groups, must_have_items)
             if combos_2:
                 problem_2, vars_2 = build_ilp_with_substitutes(required_items, combos_2, substitute_groups, must_have_items)
-                res_2 = solve_and_display(problem_2, combos_2, vars_2, total_price, item_name_map, required_items, substitute_groups)
+                res_2 = solve_and_display(problem_2, combos_2, vars_2, total_price, item_name_map, required_items, substitute_groups, must_have_items=must_have_items, promotions=active_promotions)
 
-            print("\\n💡【功能四】加價湊套餐（Upsell）")
-            if res_2 and res_2.get("status") == "success":
-                base_cost = res_2["total"]
+            print("\n💡【功能四】加價湊套餐（Upsell）")
+            # 決定計算底價 (優先用 res_2，若無則用 res_1)
+            target_base = res_2 if (res_2 and res_2.get("status") == "success") else res_1
+            if target_base and target_base.get("status") == "success":
+                base_cost = target_base["total"]
                 candidates = ["F00006", "D00005", "D00004", "D00018", "D00021", "D00014"]
                 upsell_plans = []
                 for cand_id in candidates:
@@ -425,21 +565,31 @@ if __name__ == "__main__":
                     p_row = cursor.fetchone()
                     if not p_row: continue
                     cand_price = p_row["price"]
+                    
+                    # 複製現有需求，並加點該候選商品
                     temp_req = required_items.copy()
                     temp_req[cand_id] = temp_req.get(cand_id, 0) + 1
+                    
+                    # 在計算 upsell 時放寬 must_have 約束，避免把加點商品強制鎖定
                     temp_must_have = must_have_items.copy()
-                    temp_must_have[cand_id] = temp_must_have.get(cand_id, 0) + 1
+                    # 加點品項本身必須出現在方案中，不可被替代群取代
+                    temp_must_have[cand_id] = temp_req[cand_id]
+                    
+                    # 重新篩選適用 combo 並求解
                     combos_4 = filter_flexible_combos(expanded_combos, temp_req, substitute_groups, temp_must_have)
                     if not combos_4: continue
+                    
                     import pulp
                     problem_4, vars_4 = build_ilp_with_substitutes(temp_req, combos_4, substitute_groups, temp_must_have)
                     problem_4.solve(pulp.PULP_CBC_CMD(msg=False))
                     if problem_4.status == 1:
                         new_cost = problem_4.objective.value()
                         extra_cost = new_cost - base_cost
-                        if extra_cost > 0 and extra_cost < cand_price:
+                        
+                        # 重寫判斷條件：只要加價金額小於原品項單點價 (包含小於等於 0 的超值升級)
+                        if extra_cost < cand_price:
                             temp_total_price = total_price + cand_price
-                            r4 = solve_and_display(problem_4, combos_4, vars_4, temp_total_price, item_name_map, temp_req, substitute_groups, silent=True)
+                            r4 = solve_and_display(problem_4, combos_4, vars_4, temp_total_price, item_name_map, temp_req, substitute_groups, silent=True, must_have_items=temp_must_have, promotions=active_promotions)
                             if r4:
                                 r4["upsell"] = {
                                     "item_id": cand_id,
@@ -453,25 +603,27 @@ if __name__ == "__main__":
                     res_4 = upsell_plans
 
         else:
-            print("\\n🚫 無甜心卡方案")
+            print("\n🚫 無甜心卡方案")
             raw_combos_no_sweetheart = fetch_all_combos_from_db(cursor, include_sweetheart=False)
             expanded_combos_no_sweetheart = expand_combos(raw_combos_no_sweetheart, item_type_map, group_map, item_name_map)
+            expanded_combos_no_sweetheart = inject_promo_variants(expanded_combos_no_sweetheart, active_promotions, item_name_map)
 
-            print("\\n🎯 完全符合需求（無甜心卡）")
+            print("\n🎯 完全符合需求（無甜心卡）")
             combos_1 = filter_strict_combos(expanded_combos_no_sweetheart, required_items)
             if combos_1:
                 problem_1, vars_1 = build_ilp_strict(required_items, combos_1)
-                res_1 = solve_and_display(problem_1, combos_1, vars_1, total_price, item_name_map, required_items, substitute_groups)
+                res_1 = solve_and_display(problem_1, combos_1, vars_1, total_price, item_name_map, required_items, substitute_groups, must_have_items=must_have_items, promotions=active_promotions)
 
-            print("\\n🔄 允許替代（無甜心卡）")
+            print("\n🔄 允許替代（無甜心卡）")
             combos_2 = filter_flexible_combos(expanded_combos_no_sweetheart, required_items, substitute_groups, must_have_items)
             if combos_2:
                 problem_2, vars_2 = build_ilp_with_substitutes(required_items, combos_2, substitute_groups, must_have_items)
-                res_2 = solve_and_display(problem_2, combos_2, vars_2, total_price, item_name_map, required_items, substitute_groups)
+                res_2 = solve_and_display(problem_2, combos_2, vars_2, total_price, item_name_map, required_items, substitute_groups, must_have_items=must_have_items, promotions=active_promotions)
 
-            print("\\n💡 升級推薦（無甜心卡）")
-            if res_2 and res_2.get("status") == "success":
-                base_cost = res_2["total"]
+            print("\n💡 升級推薦（無甜心卡）")
+            target_base = res_2 if (res_2 and res_2.get("status") == "success") else res_1
+            if target_base and target_base.get("status") == "success":
+                base_cost = target_base["total"]
                 candidates = ["F00006", "D00005", "D00004", "D00018", "D00021", "D00014"]
                 upsell_plans = []
                 for cand_id in candidates:
@@ -479,21 +631,26 @@ if __name__ == "__main__":
                     p_row = cursor.fetchone()
                     if not p_row: continue
                     cand_price = p_row["price"]
+                    
                     temp_req = required_items.copy()
                     temp_req[cand_id] = temp_req.get(cand_id, 0) + 1
+                    
                     temp_must_have = must_have_items.copy()
-                    temp_must_have[cand_id] = temp_must_have.get(cand_id, 0) + 1
+                    # 加點品項本身必須出現在方案中，不可被替代群取代
+                    temp_must_have[cand_id] = temp_req[cand_id]
+                    
                     combos_4 = filter_flexible_combos(expanded_combos_no_sweetheart, temp_req, substitute_groups, temp_must_have)
                     if not combos_4: continue
+                    
                     import pulp
                     problem_4, vars_4 = build_ilp_with_substitutes(temp_req, combos_4, substitute_groups, temp_must_have)
                     problem_4.solve(pulp.PULP_CBC_CMD(msg=False))
                     if problem_4.status == 1:
                         new_cost = problem_4.objective.value()
                         extra_cost = new_cost - base_cost
-                        if extra_cost > 0 and extra_cost < cand_price:
+                        if extra_cost < cand_price:
                             temp_total_price = total_price + cand_price
-                            r4 = solve_and_display(problem_4, combos_4, vars_4, temp_total_price, item_name_map, temp_req, substitute_groups, silent=True)
+                            r4 = solve_and_display(problem_4, combos_4, vars_4, temp_total_price, item_name_map, temp_req, substitute_groups, silent=True, must_have_items=temp_must_have, promotions=active_promotions)
                             if r4:
                                 r4["upsell"] = {
                                     "item_id": cand_id,

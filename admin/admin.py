@@ -381,6 +381,7 @@ TABLE_COLUMNS = {
     "item_group_links": ["parent_item_id", "child_item_id", "extra_cost"],
     "items": ["item_id", "item_name", "item_type", "price"],
     "menu_options": ["option_id", "option_name"],
+    "promotions": ["promo_id", "promo_name", "condition_type", "condition_value", "reward_item_id", "extra_cost", "is_active", "start_time", "end_time"],
 }
 
 # ---------------- 側邊欄：全域導覽 ----------------
@@ -596,7 +597,7 @@ elif mode == "➕ 新增資料":
     st.caption("提示：新增成功後訊息會保留在畫面上，請手動刷新頁面以更新下拉選單。")
 
 
-    tab1, tab2, tab3, tab4 = st.tabs(["🍔 新增單品", "🍟 新增套餐", "🏷️ 新增方案", "🔗 新增群組項目"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🍔 新增單品", "🍟 新增套餐", "🏷️ 新增方案", "🔗 新增群組項目", "🎁 新增活動優惠"])
 
     # --- 1. 新增單品 (維持 5 位數) ---
     with tab1:
@@ -847,6 +848,126 @@ elif mode == "➕ 新增資料":
                     except Exception as e:
                         st.error(f"❌ 綁定失敗: {e}")
 
+    # --- 5. 新增活動優惠 (promotions) ---
+    with tab5:
+        st.subheader("新增活動優惠 (Promotions)")
+        with engine.connect() as conn:
+            # 獲取選項 (menu_options)、套餐 (all_combinations) 和單品 (items) 的選項列表
+            db_opts = pd.read_sql(text("SELECT option_id, option_name FROM menu_options"), conn)
+            db_combos = pd.read_sql(text("SELECT combination_id, combination_name FROM all_combinations"), conn)
+            db_items = pd.read_sql(text("SELECT item_id, item_name FROM items"), conn)
+            
+        opt_labels = db_opts.apply(lambda x: f"{x['option_id']} - {x['option_name']}", axis=1).tolist()
+        combo_labels = db_combos.apply(lambda x: f"{x['combination_id']} - {x['combination_name']}", axis=1).tolist()
+        item_labels = db_items.apply(lambda x: f"{x['item_id']} - {x['item_name']}", axis=1).tolist()
+
+        with st.form("add_promotion"):
+            promo_name = st.text_input("活動名稱 (例如：買超值全餐送4塊鷄塊)")
+            condition_type = st.selectbox("觸發條件類型", ["OPTION", "COMBINATION", "ITEM", "MIN_PRICE"])
+            
+            st.caption("請根據觸發條件類型在下方選擇或輸入對應的條件值 (多選時會以逗號組合)")
+            
+            # 依據條件類型提供不同的輸入方式
+            selected_opts = st.multiselect("選擇適用方案 (OPTION)", opt_labels, help="僅在條件類型為 OPTION 時生效")
+            selected_combos = st.multiselect("選擇適用套餐 (COMBINATION)", combo_labels, help="僅在條件類型為 COMBINATION 時生效")
+            selected_items_cond = st.multiselect("選擇適用單品 (ITEM)", item_labels, key="cond_items", help="僅在條件類型為 ITEM 時生效")
+            min_price_val = st.text_input("最低消費金額 (MIN_PRICE)", value="", help="僅在條件類型為 MIN_PRICE 時生效")
+            
+            # 贈品與加購價
+            reward_item = st.selectbox("贈送單品 (Reward Item)", item_labels)
+            extra_cost = st.number_input("加購價 (Extra Cost)", min_value=0, value=0, step=1)
+            
+            is_active = st.checkbox("是否啟用", value=True)
+            
+            # 開始與結束時間 (可選)
+            col_start, col_end = st.columns(2)
+            with col_start:
+                use_start_time = st.checkbox("設定開始時間", value=False)
+                start_date = st.date_input("開始日期", value=datetime.today())
+                start_time_val = st.time_input("開始時間", value=datetime.min.time())
+            with col_end:
+                use_end_time = st.checkbox("設定結束時間", value=False)
+                end_date = st.date_input("結束日期", value=datetime.today())
+                end_time_val = st.time_input("結束時間", value=datetime.max.time())
+
+            if st.form_submit_button("確認新增活動"):
+                if not promo_name:
+                    st.error("❌ 請輸入活動名稱")
+                else:
+                    # 決定條件值
+                    cond_val = ""
+                    if condition_type == "OPTION":
+                        cond_val = ",".join([opt.split(" - ")[0] for opt in selected_opts])
+                    elif condition_type == "COMBINATION":
+                        cond_val = ",".join([combo.split(" - ")[0] for combo in selected_combos])
+                    elif condition_type == "ITEM":
+                        cond_val = ",".join([item.split(" - ")[0] for item in selected_items_cond])
+                    elif condition_type == "MIN_PRICE":
+                        cond_val = min_price_val.strip()
+                    
+                    if not cond_val:
+                        st.error(f"❌ 請選擇或輸入與觸發條件類型【{condition_type}】相符的項目")
+                    else:
+                        try:
+                            reward_id = reward_item.split(" - ")[0]
+                            admin_id = selected_admin
+                            
+                            start_dt = None
+                            if use_start_time:
+                                start_dt = datetime.combine(start_date, start_time_val)
+                            
+                            end_dt = None
+                            if use_end_time:
+                                end_dt = datetime.combine(end_date, end_time_val)
+                            
+                            with engine.connect() as conn:
+                                with conn.begin():
+                                    # 生成 P001 樣式的 ID
+                                    pid = generate_new_id(conn, "promotions", "promo_id", "P", width=3)
+                                    
+                                    sql = """
+                                    INSERT INTO promotions (promo_id, promo_name, condition_type, condition_value, reward_item_id, extra_cost, is_active, start_time, end_time)
+                                    VALUES (:promo_id, :promo_name, :condition_type, :condition_value, :reward_item_id, :extra_cost, :is_active, :start_time, :end_time)
+                                    """
+                                    params = {
+                                        "promo_id": pid,
+                                        "promo_name": promo_name,
+                                        "condition_type": condition_type,
+                                        "condition_value": cond_val,
+                                        "reward_item_id": reward_id,
+                                        "extra_cost": extra_cost,
+                                        "is_active": 1 if is_active else 0,
+                                        "start_time": start_dt,
+                                        "end_time": end_dt
+                                    }
+                                    conn.execute(text(sql), params)
+                                    
+                                    # 記錄 Log
+                                    insert_edit_log(
+                                        conn,
+                                        table="promotions",
+                                        pk=pid,
+                                        action="INSERT",
+                                        old_data=None,
+                                        new_data={
+                                            "promo_id": pid,
+                                            "promo_name": promo_name,
+                                            "condition_type": condition_type,
+                                            "condition_value": cond_val,
+                                            "reward_item_id": reward_id,
+                                            "extra_cost": extra_cost,
+                                            "is_active": 1 if is_active else 0,
+                                            "start_time": str(start_dt) if start_dt else None,
+                                            "end_time": str(end_dt) if end_dt else None
+                                        },
+                                        admin=admin_id
+                                    )
+                                    
+                            st.success(f"✅ 活動優惠新增成功！新 ID 為：{pid}")
+                            st.balloons()
+                        except Exception as e:
+                            st.error(f"❌ 新增活動優惠失敗: {e}")
+
 
 # ==============================================================================
 # 🎯 功能三：修改資料 (Update) - 已修正 ID 型別問題
@@ -859,7 +980,7 @@ elif mode == "✏️ 修改資料":
         st.session_state["confirm_item_update"] = False
         st.session_state["update_payload"] = {}
 
-    tab1, tab2, tab3, tab4 = st.tabs(["🍔 修改單品 (Items)", "🍟 修改組合 (Combinations)", "🏷️ 修改方案 (Options)", "🔗 修改群組加價"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🍔 修改單品 (Items)", "🍟 修改組合 (Combinations)", "🏷️ 修改方案 (Options)", "🔗 修改群組加價", "🎁 修改活動優惠 (Promotions)"])
 
     # ----------------------------------------------------------------------
     # Tab 1: 修改單品 (含連動價格功能)
@@ -1366,6 +1487,7 @@ elif mode == "✏️ 修改資料":
                                         old_data={"extra_cost": int(orig_row["extra_cost"])}, new_data={"extra_cost": int(row["extra_cost"])}, admin=admin_id
                                     )
                                     changes_made += 1
+                                    changes_made += 1
                         if changes_made > 0:
                             st.success(f"✅ 成功更新 {changes_made} 筆加價！")
                             import time
@@ -1374,7 +1496,164 @@ elif mode == "✏️ 修改資料":
                         else:
                             st.info("沒有變更。")
                     except Exception as e:
-                        st.error(f"更新失敗: {e}")
+                         st.error(f"更新失敗: {e}")
+        except Exception as e:
+            st.error(f"讀取資料失敗: {e}")
+
+    # ----------------------------------------------------------------------
+    # Tab 5: 修改活動優惠 (Promotions)
+    # ----------------------------------------------------------------------
+    with tab5:
+        st.subheader("5. 修改活動優惠資料")
+        try:
+            with engine.connect() as conn:
+                df_promos = pd.read_sql("SELECT * FROM promotions ORDER BY promo_id ASC", conn)
+                db_opts = pd.read_sql(text("SELECT option_id, option_name FROM menu_options"), conn)
+                db_combos = pd.read_sql(text("SELECT combination_id, combination_name FROM all_combinations"), conn)
+                db_items = pd.read_sql(text("SELECT item_id, item_name FROM items"), conn)
+
+            opt_labels = db_opts.apply(lambda x: f"{x['option_id']} - {x['option_name']}", axis=1).tolist()
+            combo_labels = db_combos.apply(lambda x: f"{x['combination_id']} - {x['combination_name']}", axis=1).tolist()
+            item_labels = db_items.apply(lambda x: f"{x['item_id']} - {x['item_name']}", axis=1).tolist()
+            
+            opt_id_map = dict(zip(db_opts['option_id'], opt_labels))
+            combo_id_map = dict(zip(db_combos['combination_id'], combo_labels))
+            item_id_map = dict(zip(db_items['item_id'], item_labels))
+
+            if df_promos.empty:
+                st.warning("⚠️ 目前無任何活動優惠。")
+            else:
+                promo_options = df_promos.apply(lambda x: f"{x['promo_id']} - {x['promo_name']}", axis=1).tolist()
+                selected_promo_str = st.selectbox("請選擇欲修改的活動優惠", promo_options, key="sel_promo_edit")
+                selected_promo_id = selected_promo_str.split(" - ")[0]
+                
+                curr_promo = df_promos[df_promos["promo_id"] == selected_promo_id].iloc[0]
+                
+                with st.form("edit_promo_form"):
+                    new_promo_name = st.text_input("活動名稱", value=curr_promo["promo_name"])
+                    
+                    cond_types = ["OPTION", "COMBINATION", "ITEM", "MIN_PRICE"]
+                    curr_type_val = curr_promo["condition_type"]
+                    curr_type_idx = cond_types.index(curr_type_val) if curr_type_val in cond_types else 0
+                    new_condition_type = st.selectbox("觸發條件類型", cond_types, index=curr_type_idx)
+                    
+                    st.caption("請根據觸發條件類型填寫對應條件值 (現有條件值: " + str(curr_promo["condition_value"]) + ")")
+                    
+                    # 剖析現有條件值以做預選值
+                    curr_cond_vals = [v.strip() for v in str(curr_promo["condition_value"]).split(",") if v.strip()]
+                    
+                    default_opts = [opt_id_map[v] for v in curr_cond_vals if v in opt_id_map]
+                    default_combos = [combo_id_map[v] for v in curr_cond_vals if v in combo_id_map]
+                    default_items = [item_id_map[v] for v in curr_cond_vals if v in item_id_map]
+                    default_min_price = curr_promo["condition_value"] if curr_promo["condition_type"] == "MIN_PRICE" else ""
+                    
+                    selected_opts = st.multiselect("適用方案 (OPTION)", opt_labels, default=default_opts)
+                    selected_combos = st.multiselect("適用套餐 (COMBINATION)", combo_labels, default=default_combos)
+                    selected_items_cond = st.multiselect("適用單品 (ITEM)", item_labels, default=default_items, key="edit_cond_items")
+                    min_price_val = st.text_input("最低消費金額 (MIN_PRICE)", value=str(default_min_price), help="僅在條件類型為 MIN_PRICE 時生效")
+                    
+                    # 贈送品與加購價
+                    curr_reward_label = item_id_map.get(curr_promo["reward_item_id"], item_labels[0] if item_labels else "")
+                    new_reward_item = st.selectbox("贈送單品 (Reward Item)", item_labels, index=item_labels.index(curr_reward_label) if curr_reward_label in item_labels else 0)
+                    
+                    new_extra_cost = st.number_input("加購價 (Extra Cost)", min_value=0, value=int(curr_promo["extra_cost"]), step=1)
+                    new_is_active = st.checkbox("是否啟用", value=bool(curr_promo["is_active"]))
+                    
+                    # 開始與結束時間
+                    c_start, c_end = st.columns(2)
+                    
+                    curr_start = curr_promo["start_time"]
+                    curr_end = curr_promo["end_time"]
+                    
+                    with c_start:
+                        use_start_time = st.checkbox("設定開始時間", value=(curr_start is not None), key="edit_start_chk")
+                        start_date = st.date_input("開始日期", value=curr_start.date() if curr_start else datetime.today())
+                        start_time_val = st.time_input("開始時間", value=curr_start.time() if curr_start else datetime.min.time())
+                        
+                    with c_end:
+                        use_end_time = st.checkbox("設定結束時間", value=(curr_end is not None), key="edit_end_chk")
+                        end_date = st.date_input("結束日期", value=curr_end.date() if curr_end else datetime.today())
+                        end_time_val = st.time_input("結束時間", value=curr_end.time() if curr_end else datetime.max.time())
+                        
+                    save_promo = st.form_submit_button("💾 儲存活動優惠修改")
+                    
+                    if save_promo:
+                        # 決定條件值
+                        new_cond_val = ""
+                        if new_condition_type == "OPTION":
+                            new_cond_val = ",".join([opt.split(" - ")[0] for opt in selected_opts])
+                        elif new_condition_type == "COMBINATION":
+                            new_cond_val = ",".join([combo.split(" - ")[0] for combo in selected_combos])
+                        elif new_condition_type == "ITEM":
+                            new_cond_val = ",".join([item.split(" - ")[0] for item in selected_items_cond])
+                        elif new_condition_type == "MIN_PRICE":
+                            new_cond_val = min_price_val.strip()
+                        
+                        if not new_cond_val:
+                            st.error(f"❌ 請選擇或輸入與觸發條件類型【{new_condition_type}】相符的項目")
+                        else:
+                            try:
+                                new_reward_id = new_reward_item.split(" - ")[0]
+                                admin_id = selected_admin
+                                
+                                start_dt = datetime.combine(start_date, start_time_val) if use_start_time else None
+                                end_dt = datetime.combine(end_date, end_time_val) if use_end_time else None
+                                
+                                with engine.begin() as conn:
+                                    # 記錄舊資料以供 Log
+                                    old_data = {
+                                        "promo_id": selected_promo_id,
+                                        "promo_name": curr_promo["promo_name"],
+                                        "condition_type": curr_promo["condition_type"],
+                                        "condition_value": curr_promo["condition_value"],
+                                        "reward_item_id": curr_promo["reward_item_id"],
+                                        "extra_cost": int(curr_promo["extra_cost"]),
+                                        "is_active": int(curr_promo["is_active"]),
+                                        "start_time": str(curr_start) if curr_start else None,
+                                        "end_time": str(curr_end) if curr_end else None
+                                    }
+                                    new_data = {
+                                        "promo_id": selected_promo_id,
+                                        "promo_name": new_promo_name,
+                                        "condition_type": new_condition_type,
+                                        "condition_value": new_cond_val,
+                                        "reward_item_id": new_reward_id,
+                                        "extra_cost": new_extra_cost,
+                                        "is_active": 1 if new_is_active else 0,
+                                        "start_time": str(start_dt) if start_dt else None,
+                                        "end_time": str(end_dt) if end_dt else None
+                                    }
+                                    
+                                    sql_update = """
+                                        UPDATE promotions 
+                                        SET promo_name=:promo_name, condition_type=:condition_type, condition_value=:condition_value, 
+                                            reward_item_id=:reward_item_id, extra_cost=:extra_cost, is_active=:is_active, 
+                                            start_time=:start_time, end_time=:end_time
+                                        WHERE promo_id=:promo_id
+                                    """
+                                    conn.execute(text(sql_update), {
+                                        "promo_name": new_promo_name,
+                                        "condition_type": new_condition_type,
+                                        "condition_value": new_cond_val,
+                                        "reward_item_id": new_reward_id,
+                                        "extra_cost": new_extra_cost,
+                                        "is_active": 1 if new_is_active else 0,
+                                        "start_time": start_dt,
+                                        "end_time": end_dt,
+                                        "promo_id": selected_promo_id
+                                    })
+                                    
+                                    insert_edit_log(
+                                        conn, table="promotions", pk=selected_promo_id, action="UPDATE",
+                                        old_data=old_data, new_data=new_data, admin=admin_id
+                                    )
+                                    
+                                st.success("✅ 成功修改活動優惠資料！")
+                                import time
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ 修改失敗: {e}")
         except Exception as e:
             st.error(f"讀取資料失敗: {e}")
 
@@ -1390,7 +1669,7 @@ elif mode == "🗑 刪除資料":
         st.session_state["last_mode"] = mode # 紀錄當前模式
     st.header("🗑 資料刪除中心")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📦 刪除組合套餐", "🍔 刪除基本單品 (Items)", "🍟 刪除方案 (Options)", "🔗 刪除群組項目"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 刪除組合套餐", "🍔 刪除基本單品 (Items)", "🍟 刪除方案 (Options)", "🔗 刪除群組項目", "🎁 刪除活動優惠 (Promotions)"])
 
     # --------------------------------------------------------------------------
     # Tab 1: 刪除組合套餐 - 🔥 新增預覽功能
@@ -1656,7 +1935,6 @@ elif mode == "🗑 刪除資料":
                 )
 
                 rows_del = edited_opts[edited_opts["刪除?"] == True]
-
                 if not rows_del.empty:
                     st.write("")
                     if st.button(f"🗑 準備刪除 {len(rows_del)} 個方案", key="btn_prep_del_opts"):
@@ -1790,6 +2068,101 @@ elif mode == "🗑 刪除資料":
                             st.error(f"刪除失敗: {e}")
             else:
                 st.info("目前無任何綁定關聯。")
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+    # --------------------------------------------------------------------------
+    # Tab 5: 刪除活動優惠 (Promotions)
+    # --------------------------------------------------------------------------
+    with tab5:
+        st.subheader("🎁 刪除活動優惠")
+        st.caption("勾選您想刪除的活動優惠，確認後執行刪除。")
+        try:
+            with engine.connect() as conn:
+                df_promos_del = pd.read_sql("SELECT * FROM promotions ORDER BY promo_id ASC", conn)
+            
+            if not df_promos_del.empty:
+                filter_promo_name = st.text_input("🔍 篩選活動名稱", key="filter_promo_del")
+                df_filtered_promos = df_promos_del.copy()
+                if filter_promo_name:
+                    df_filtered_promos = df_filtered_promos[df_filtered_promos["promo_name"].str.contains(filter_promo_name, case=False)]
+                
+                st.write(f"顯示 {len(df_filtered_promos)} / {len(df_promos_del)} 筆資料")
+                
+                df_filtered_promos.insert(0, "刪除?", False)
+                if st.checkbox("全選活動", key="chk_all_promos"):
+                    df_filtered_promos["刪除?"] = True
+                
+                edited_del_promos = st.data_editor(
+                    df_filtered_promos,
+                    column_config={
+                        "刪除?": st.column_config.CheckboxColumn("刪除?", width="small"),
+                        "promo_id": st.column_config.TextColumn("活動ID", disabled=True),
+                        "promo_name": st.column_config.TextColumn("活動名稱", disabled=True),
+                        "condition_type": st.column_config.TextColumn("條件類型", disabled=True),
+                        "condition_value": st.column_config.TextColumn("條件值", disabled=True),
+                        "reward_item_id": st.column_config.TextColumn("贈送品ID", disabled=True),
+                        "extra_cost": st.column_config.NumberColumn("加購價", disabled=True),
+                        "is_active": st.column_config.CheckboxColumn("是否啟用", disabled=True),
+                        "start_time": st.column_config.DatetimeColumn("開始時間", disabled=True),
+                        "end_time": st.column_config.DatetimeColumn("結束時間", disabled=True)
+                    },
+                    hide_index=True, use_container_width=True, key="editor_del_promos"
+                )
+                
+                rows_del_promos = edited_del_promos[edited_del_promos["刪除?"] == True]
+                
+                if not rows_del_promos.empty:
+                    if "confirm_stage_tab5_del" not in st.session_state:
+                        st.session_state["confirm_stage_tab5_del"] = False
+                    
+                    if not st.session_state["confirm_stage_tab5_del"]:
+                        if st.button(f"🗑 刪除所選的 {len(rows_del_promos)} 筆活動優惠", key="btn_del_promos_trigger", type="primary", use_container_width=True):
+                            st.session_state["confirm_stage_tab5_del"] = True
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ **確定要刪除以下活動優惠嗎？此操作不可逆！**")
+                        st.dataframe(rows_del_promos.drop(columns=["刪除?"]), hide_index=True, use_container_width=True)
+                        
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("✅ 確認刪除", key="btn_conf_promo_del", type="primary", use_container_width=True):
+                                admin_id = selected_admin
+                                try:
+                                    with engine.begin() as conn:
+                                        for _, row in rows_del_promos.iterrows():
+                                            pid = row["promo_id"]
+                                            conn.execute(
+                                                text("DELETE FROM promotions WHERE promo_id=:pid"),
+                                                {"pid": pid}
+                                            )
+                                            insert_edit_log(
+                                                conn, table="promotions", pk=pid, action="DELETE",
+                                                old_data={
+                                                    "promo_id": pid,
+                                                    "promo_name": row["promo_name"],
+                                                    "condition_type": row["condition_type"],
+                                                    "condition_value": row["condition_value"],
+                                                    "reward_item_id": row["reward_item_id"],
+                                                    "extra_cost": int(row["extra_cost"]),
+                                                    "is_active": int(row["is_active"]),
+                                                    "start_time": str(row["start_time"]) if pd.notnull(row["start_time"]) else None,
+                                                    "end_time": str(row["end_time"]) if pd.notnull(row["end_time"]) else None
+                                                }, new_data=None, admin=admin_id
+                                            )
+                                    st.success("✅ 活動優惠成功刪除！")
+                                    st.session_state["confirm_stage_tab5_del"] = False
+                                    import time
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"刪除活動優惠失敗: {e}")
+                        with col_no:
+                            if st.button("❌ 取消", key="btn_canc_promo_del", use_container_width=True):
+                                st.session_state["confirm_stage_tab5_del"] = False
+                                st.rerun()
+            else:
+                st.info("目前無任何活動優惠。")
         except Exception as e:
             st.error(f"Error: {e}")
 

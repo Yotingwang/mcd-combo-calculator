@@ -20,7 +20,7 @@ This is a web application that optimizes McDonald's meal combinations based on y
    DB_HOST=localhost
    DB_USER=root
    DB_PASSWORD=your_password
-   DB_NAME=mcd_combo_assistant
+   DB_NAME=mcdonalds_db
    ```
 
 3. Initialize the Database:

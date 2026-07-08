@@ -44,17 +44,6 @@ app.get('/api/items', (req, res) => {
   });
 });
 
-app.get('/api/combos', (req, res) => {
-  const sql = 'SELECT * FROM combos';
-  connection.query(sql, (err, results) => {
-    if (err) {
-      res.json({ status: 'error', message: err.message });
-      return;
-    }
-    res.json({ status: 'success', data: results });
-  });
-});
-
 // ── 驗證 API ──────────────────────────────────
 app.post('/api/register', async (req, res) => {
   let { username, email, password } = req.body;
